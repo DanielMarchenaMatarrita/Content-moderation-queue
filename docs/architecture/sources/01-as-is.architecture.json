@@ -1,0 +1,210 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Content Moderation Queue\nArquitectura general — AS-IS",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/DanielMarchenaMatarrita/Content-moderation-queue",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "84fa571bd46a1ffd0caa283b37dc9ffaaf045eca"
+    }
+  },
+  "layout": {
+    "mode": "grid",
+    "cols": 6
+  },
+  "components": [
+    {
+      "id": "client",
+      "type": "external",
+      "label": "Cliente",
+      "sublabel": "Consumidor HTTP",
+      "row": 1,
+      "col": 0
+    },
+    {
+      "id": "content-api",
+      "type": "backend",
+      "label": "Content API",
+      "sublabel": "NestJS",
+      "tag": "POST /contents",
+      "row": 1,
+      "col": 1,
+      "sources": [
+        {
+          "path": "backend/apps/api/src/content/content.controller.ts",
+          "line": 7,
+          "end_line": 17,
+          "label": "Content controller"
+        },
+        {
+          "path": "backend/apps/api/src/content/content.service.ts",
+          "line": 17,
+          "end_line": 73,
+          "label": "Submission transaction"
+        }
+      ]
+    },
+    {
+      "id": "postgresql",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "Content, History, OutboxEvent",
+      "row": 0,
+      "col": 2,
+      "sources": [
+        {
+          "path": "backend/prisma/schema.prisma",
+          "line": 51,
+          "end_line": 132,
+          "label": "Persistence models"
+        },
+        {
+          "path": "backend/libs/database/src/prisma.service.ts",
+          "line": 10,
+          "end_line": 22,
+          "label": "Prisma PostgreSQL"
+        }
+      ]
+    },
+    {
+      "id": "outbox-publisher",
+      "type": "backend",
+      "label": "Outbox Publisher",
+      "sublabel": "NestJS service in API runtime",
+      "row": 2,
+      "col": 2,
+      "sources": [
+        {
+          "path": "backend/apps/api/src/outbox/outbox-publisher.service.ts",
+          "line": 41,
+          "end_line": 68,
+          "label": "Publisher setup"
+        },
+        {
+          "path": "backend/apps/api/src/outbox/outbox-publisher.service.ts",
+          "line": 100,
+          "end_line": 168,
+          "label": "Claim and publish"
+        }
+      ]
+    },
+    {
+      "id": "rabbitmq",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "AMQP event queue",
+      "row": 2,
+      "col": 3,
+      "sources": [
+        {
+          "path": "backend/libs/messaging/src/rabbitmq/rabbitmq-connection.service.ts",
+          "line": 21,
+          "end_line": 40,
+          "label": "AMQP connection"
+        },
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-topology.service.ts",
+          "line": 31,
+          "end_line": 85,
+          "label": "Queue topology"
+        }
+      ]
+    },
+    {
+      "id": "moderation-worker",
+      "type": "backend",
+      "label": "Moderation Worker",
+      "sublabel": "NestJS application context",
+      "row": 2,
+      "col": 4,
+      "sources": [
+        {
+          "path": "backend/apps/moderation-worker/src/main.ts",
+          "line": 4,
+          "end_line": 10,
+          "label": "Worker bootstrap"
+        },
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-runtime-consumer.service.ts",
+          "line": 37,
+          "end_line": 67,
+          "label": "AMQP consumer"
+        },
+        {
+          "path": "backend/apps/moderation-worker/src/moderation/content-moderation-processor.service.ts",
+          "line": 29,
+          "end_line": 76,
+          "label": "Moderation persistence"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "client-submits-content",
+      "from": "client",
+      "to": "content-api",
+      "label": "HTTP / REST",
+      "variant": "emphasis",
+      "labelDy": 54
+    },
+    {
+      "id": "api-persists-submission",
+      "from": "content-api",
+      "to": "postgresql",
+      "label": "transaction: Content, History, OutboxEvent",
+      "labelAt": [260, 160]
+    },
+    {
+      "id": "publisher-claims-outbox-events",
+      "from": "postgresql",
+      "to": "outbox-publisher",
+      "label": "claim outbox events",
+      "variant": "dashed",
+      "labelAt": [490, 180]
+    },
+    {
+      "id": "publisher-publishes-event",
+      "from": "outbox-publisher",
+      "to": "rabbitmq",
+      "label": "asynchronous AMQP publication",
+      "variant": "dashed",
+      "labelDy": 54
+    },
+    {
+      "id": "broker-delivers-event",
+      "from": "rabbitmq",
+      "to": "moderation-worker",
+      "label": "content.submitted delivery",
+      "variant": "dashed",
+      "labelDy": 54
+    },
+    {
+      "id": "worker-persists-result",
+      "from": "moderation-worker",
+      "to": "postgresql",
+      "label": "Content status, result, and history"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Entrada sincrona",
+      "items": [
+        "POST /contents crea Content, ModerationHistory y OutboxEvent en una transaccion Prisma.",
+        "Consultas de contenido se atienden desde Content API."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Moderacion asincrona",
+      "items": [
+        "Outbox Publisher reclama eventos pendientes y publica por AMQP.",
+        "Moderation Worker consume el evento y persiste estado, resultado e historial."
+      ]
+    }
+  ]
+}
