@@ -1,0 +1,247 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Content Moderation Queue\nTopologia RabbitMQ — AS-IS",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/DanielMarchenaMatarrita/Content-moderation-queue",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "84fa571bd46a1ffd0caa283b37dc9ffaaf045eca"
+    }
+  },
+  "components": [
+    {
+      "id": "outbox-publisher",
+      "type": "backend",
+      "label": "Outbox Publisher",
+      "pos": [80, 40],
+      "size": [150, 60],
+      "sources": [
+        {
+          "path": "backend/apps/api/src/outbox/outbox-publisher.service.ts",
+          "line": 142,
+          "end_line": 153,
+          "label": "Publish to events exchange"
+        }
+      ]
+    },
+    {
+      "id": "events-exchange",
+      "type": "messagebus",
+      "label": "content.events",
+      "sublabel": "topic · durable",
+      "pos": [80, 140],
+      "size": [150, 60]
+    },
+    {
+      "id": "main-queue",
+      "type": "messagebus",
+      "label": "moderation.content-submitted.v1",
+      "sublabel": "cola principal",
+      "pos": [80, 240],
+      "size": [235, 60],
+      "sources": [
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-topology.service.ts",
+          "line": 39,
+          "end_line": 48,
+          "label": "Main queue and binding"
+        }
+      ]
+    },
+    {
+      "id": "moderation-worker",
+      "type": "backend",
+      "label": "Moderation Worker",
+      "sublabel": "consumer v1",
+      "pos": [360, 240],
+      "size": [150, 60],
+      "sources": [
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-runtime-consumer.service.ts",
+          "line": 55,
+          "end_line": 95,
+          "label": "Consume and failure routing"
+        }
+      ]
+    },
+    {
+      "id": "retry-exchange",
+      "type": "messagebus",
+      "label": "content.retry",
+      "sublabel": "direct · durable",
+      "pos": [820, 140],
+      "size": [150, 60],
+      "sources": [
+        {
+          "path": "backend/libs/messaging/src/rabbitmq/rabbitmq.constants.ts",
+          "line": 13,
+          "end_line": 22,
+          "label": "Retry exchange and queue"
+        }
+      ]
+    },
+    {
+      "id": "retry-queue",
+      "type": "messagebus",
+      "label": "moderation.content-submitted.retry.v1",
+      "sublabel": "x-message-ttl = 5000 ms",
+      "pos": [820, 240],
+      "size": [260, 60],
+      "sources": [
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-topology.service.ts",
+          "line": 55,
+          "end_line": 69,
+          "label": "Retry queue and dead-letter"
+        }
+      ]
+    },
+    {
+      "id": "dlx",
+      "type": "messagebus",
+      "label": "content.dlx",
+      "sublabel": "direct · durable",
+      "pos": [80, 340],
+      "size": [150, 60],
+      "sources": [
+        {
+          "path": "backend/libs/messaging/src/rabbitmq/rabbitmq.constants.ts",
+          "line": 23,
+          "end_line": 31,
+          "label": "Dead letter exchange and queue"
+        }
+      ]
+    },
+    {
+      "id": "dlq",
+      "type": "messagebus",
+      "label": "moderation.content-submitted.dlq.v1",
+      "sublabel": "terminal",
+      "pos": [80, 430],
+      "size": [245, 60],
+      "sources": [
+        {
+          "path": "backend/apps/moderation-worker/src/content-submitted-topology.service.ts",
+          "line": 76,
+          "end_line": 85,
+          "label": "DLQ declaration and binding"
+        }
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "publish-content-submitted",
+      "from": "outbox-publisher",
+      "to": "events-exchange",
+      "label": "publish content.submitted",
+      "labelAt": [155, 120],
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "bind-main",
+      "from": "events-exchange",
+      "to": "main-queue",
+      "label": "binding content.submitted",
+      "labelAt": [155, 222],
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "consume-main",
+      "from": "main-queue",
+      "to": "moderation-worker",
+      "label": "consume (noAck = false)",
+      "labelAt": [337, 310],
+      "fromSide": "right",
+      "toSide": "left"
+    },
+    {
+      "id": "retry-on-failure",
+      "from": "moderation-worker",
+      "to": "retry-exchange",
+      "label": "retryable failure → content.retry",
+      "labelAt": [655, 285],
+      "variant": "dashed",
+      "fromSide": "right",
+      "toSide": "left",
+      "via": [[800, 270], [800, 170]]
+    },
+    {
+      "id": "bind-retry",
+      "from": "retry-exchange",
+      "to": "retry-queue",
+      "label": "binding content.submitted.retry",
+      "labelAt": [895, 222],
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "retry-loop-back",
+      "from": "retry-queue",
+      "to": "events-exchange",
+      "label": "dead-letter → content.submitted",
+      "labelAt": [375, 540],
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "left",
+      "via": [[950, 520], [20, 520], [20, 170]]
+    },
+    {
+      "id": "dead-letter-on-failure",
+      "from": "moderation-worker",
+      "to": "dlx",
+      "label": "invalid / retries exhausted → content.submitted.dead",
+      "labelAt": [340, 414],
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [[435, 325], [155, 325]]
+    },
+    {
+      "id": "bind-dlq",
+      "from": "dlx",
+      "to": "dlq",
+      "label": "binding content.submitted.dead",
+      "labelAt": [178, 415],
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Ruta principal",
+      "items": [
+        "content.events (topic) enruta content.submitted a la cola principal.",
+        "moderation.content-submitted.v1 es durable, no exclusive, no autoDelete.",
+        "El worker consume con noAck = false y prefetch = 10."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Retry de procesamiento",
+      "items": [
+        "Header x-retry-count controla el numero de reintentos; maxRetries = 3.",
+        "La cola retry espera 5000 ms (x-message-ttl) antes de devolver a content.events.",
+        "Es retry de procesamiento del consumer; el retry de publicacion Outbox es mecanismo separado."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Dead letter",
+      "items": [
+        "Mensajes invalidos o con retries agotados van a content.dlx.",
+        "moderation.content-submitted.dlq.v1 es la cola terminal (content.submitted.dead).",
+        "Metadata agregada: x-original-queue y x-failure-reason."
+      ]
+    }
+  ]
+}

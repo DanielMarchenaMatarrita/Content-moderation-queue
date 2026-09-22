@@ -2,7 +2,7 @@
 
 Esta carpeta contiene documentación arquitectónica de Content Moderation Queue.
 
-`01-as-is` representa la arquitectura implementada en el commit `84fa571bd46a1ffd0caa283b37dc9ffaaf045eca`. `02-submit-and-moderate` describe la secuencia temporal de envío y moderación de contenido en el mismo commit. Los diagramas AS-IS se derivan de evidencia del repositorio; no describen diseño propuesto.
+`01-as-is` representa la arquitectura implementada en el commit `84fa571bd46a1ffd0caa283b37dc9ffaaf045eca`. `02-submit-and-moderate` describe la secuencia temporal de envío y moderación de contenido en el mismo commit. `03-rabbitmq-topology` documenta el exchange principal, colas, retry y dead letter de RabbitMQ para `content.submitted`. Los diagramas AS-IS se derivan de evidencia del repositorio; no describen diseño propuesto.
 
 Diagramas TARGET/TO-BE se documentarán posteriormente y no deben confundirse con implementación existente.
 
