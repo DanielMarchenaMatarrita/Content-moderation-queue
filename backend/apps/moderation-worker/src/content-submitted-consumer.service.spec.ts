@@ -121,7 +121,7 @@ describe('ContentSubmittedConsumerService', () => {
     expect(CONTENT_SUBMITTED_CONSUMER_CONFIG).toMatchObject({
       consumerName: 'moderation-worker.content-submitted.v1',
       prefetch: 10,
-      autoConsume: false,
+      autoConsume: true,
     });
   });
 
