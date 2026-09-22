@@ -51,6 +51,39 @@ describe('ContentSubmittedTopologyService', () => {
       exchange.name,
       CONTENT_SUBMITTED_EVENT.routingKey,
     );
+    expect(assertExchange).toHaveBeenCalledWith('content.retry', 'direct', {
+      durable: true,
+    });
+    expect(assertQueue).toHaveBeenCalledWith(
+      'moderation.content-submitted.retry.v1',
+      {
+        durable: true,
+        exclusive: false,
+        autoDelete: false,
+        arguments: {
+          'x-message-ttl': 5_000,
+          'x-dead-letter-exchange': 'content.events',
+          'x-dead-letter-routing-key': 'content.submitted',
+        },
+      },
+    );
+    expect(bindQueue).toHaveBeenCalledWith(
+      'moderation.content-submitted.retry.v1',
+      'content.retry',
+      'content.submitted.retry',
+    );
+    expect(assertExchange).toHaveBeenCalledWith('content.dlx', 'direct', {
+      durable: true,
+    });
+    expect(assertQueue).toHaveBeenCalledWith(
+      'moderation.content-submitted.dlq.v1',
+      { durable: true, exclusive: false, autoDelete: false },
+    );
+    expect(bindQueue).toHaveBeenCalledWith(
+      'moderation.content-submitted.dlq.v1',
+      'content.dlx',
+      'content.submitted.dead',
+    );
     expect(CONTENT_SUBMITTED_CONSUMER_CONFIG.queueName).toBe(
       'moderation.content-submitted.v1',
     );

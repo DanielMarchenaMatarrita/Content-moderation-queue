@@ -4,11 +4,12 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { RabbitMqConnectionService } from '@app/messaging';
+import { RabbitMqConnectionService, RABBITMQ_TOPOLOGY } from '@app/messaging';
 import type { ChannelWrapper } from 'amqp-connection-manager';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import { CONTENT_SUBMITTED_CONSUMER_CONFIG } from './content-submitted-consumer.constants.js';
 import { ContentSubmittedConsumerService } from './content-submitted-consumer.service.js';
+import { ContentSubmittedFailureRouterService } from './content-submitted-failure-router.service.js';
 import { ContentSubmittedTopologyService } from './content-submitted-topology.service.js';
 
 const SHUTDOWN_DRAIN_TIMEOUT_MS = 10_000;
@@ -30,6 +31,7 @@ export class ContentSubmittedRuntimeConsumerService
     private readonly rabbitMq: RabbitMqConnectionService,
     private readonly consumer: ContentSubmittedConsumerService,
     private readonly topology: ContentSubmittedTopologyService,
+    private readonly failureRouter: ContentSubmittedFailureRouterService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
@@ -72,7 +74,25 @@ export class ContentSubmittedRuntimeConsumerService
       return;
     }
 
-    await this.consumer.handleMessage(message, deliveryChannel);
+    const result = await this.consumer.handleMessage(message, deliveryChannel);
+    // Consumer ACKs committed success/duplicates; runtime settles only republished failures.
+    if (result.status === 'processed' || result.status === 'duplicate') {
+      return;
+    }
+
+    if (result.status === 'invalid') {
+      await this.failureRouter.publishDeadLetter(message, result.reason);
+      deliveryChannel.ack(message);
+      return;
+    }
+
+    const retryCount = readRetryCount(message);
+    if (retryCount < CONTENT_SUBMITTED_CONSUMER_CONFIG.maxRetries) {
+      await this.failureRouter.publishRetry(message, retryCount + 1);
+    } else {
+      await this.failureRouter.publishDeadLetter(message, result.error);
+    }
+    deliveryChannel.ack(message);
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -135,4 +155,13 @@ export class ContentSubmittedRuntimeConsumerService
       this.logger.warn('Timed out draining ContentSubmitted deliveries');
     }
   }
+}
+
+function readRetryCount(message: ConsumeMessage): number {
+  const value = message.properties.headers?.[
+    RABBITMQ_TOPOLOGY.contentSubmitted.retryHeader
+  ];
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? value
+    : 0;
 }

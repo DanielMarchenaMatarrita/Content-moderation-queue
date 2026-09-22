@@ -38,8 +38,9 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
     private readonly rabbitMq: RabbitMqConnectionService,
   ) {}
 
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     const exchange = RABBITMQ_TOPOLOGY.eventsExchange;
+    const destination = RABBITMQ_TOPOLOGY.contentSubmitted;
 
     this.publisherChannel = this.rabbitMq.getConnection().createChannel({
       name: 'outbox-publisher',
@@ -49,9 +50,20 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
         await channel.assertExchange(exchange.name, exchange.type, {
           durable: exchange.durable,
         });
+        await channel.assertQueue(destination.queueName, {
+          durable: true,
+          exclusive: false,
+          autoDelete: false,
+        });
+        await channel.bindQueue(
+          destination.queueName,
+          exchange.name,
+          CONTENT_SUBMITTED_EVENT.routingKey,
+        );
       },
     });
 
+    await this.publisherChannel.waitForConnect();
     this.scheduleNextCycle(0);
   }
 
@@ -188,7 +200,9 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
     return (
       Object.keys(record).length === 1 &&
       typeof record.contentId === 'string' &&
-      record.contentId.trim().length > 0
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        record.contentId,
+      )
     );
   }
 
