@@ -1,0 +1,133 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  USER
+  MODERATOR
+  ADMIN
+}
+
+enum ContentStatus {
+  PENDING
+  PROCESSING
+  APPROVED
+  REVIEW_REQUIRED
+  REJECTED
+  FAILED
+}
+
+enum ModerationDecision {
+  APPROVED
+  REVIEW_REQUIRED
+  REJECTED
+}
+
+enum ModerationSource {
+  SYSTEM
+  MODERATION_WORKER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique @db.VarChar(320)
+  passwordHash String   @db.Text
+  displayName  String   @db.VarChar(120)
+  role         UserRole @default(USER)
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(3)
+
+  contents          Content[]
+  moderationActions ModerationHistory[] @relation("ModerationHistoryActor")
+}
+
+model Content {
+  id        String        @id @default(uuid()) @db.Uuid
+  userId    String        @db.Uuid
+  body      String        @db.Text
+  status    ContentStatus @default(PENDING)
+  createdAt DateTime      @default(now()) @db.Timestamptz(3)
+  updatedAt DateTime      @updatedAt @db.Timestamptz(3)
+
+  user              User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  moderationResults ModerationResult[]
+  moderationHistory ModerationHistory[]
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model ModerationResult {
+  id            String             @id @default(uuid()) @db.Uuid
+  contentId     String             @db.Uuid
+  decision      ModerationDecision
+  score         Int?
+  reasons       Json?
+  engineVersion String             @db.VarChar(30)
+  createdAt     DateTime           @default(now()) @db.Timestamptz(3)
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Restrict)
+
+  @@index([contentId, createdAt(sort: Desc)])
+}
+
+model ModerationHistory {
+  id          String           @id @default(uuid()) @db.Uuid
+  contentId   String           @db.Uuid
+  fromStatus  ContentStatus?
+  toStatus    ContentStatus
+  source      ModerationSource
+  actorUserId String?          @db.Uuid
+  reason      String?          @db.Text
+  createdAt   DateTime         @default(now()) @db.Timestamptz(3)
+
+  content Content @relation(fields: [contentId], references: [id], onDelete: Restrict)
+
+  actor User? @relation("ModerationHistoryActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([contentId, createdAt(sort: Asc)])
+  @@index([actorUserId])
+}
+
+model ProcessedMessage {
+  id           String   @id @default(uuid()) @db.Uuid
+  eventId      String   @db.Uuid
+  consumerName String   @db.VarChar(100)
+  processedAt  DateTime @default(now()) @db.Timestamptz(3)
+
+  @@unique([eventId, consumerName])
+}
+
+model OutboxEvent {
+  id           String @id @default(uuid()) @db.Uuid
+  eventId      String @unique @db.Uuid
+  eventType    String @db.VarChar(100)
+  eventVersion Int    @default(1)
+
+  aggregateType String @db.VarChar(100)
+  aggregateId   String @db.Uuid
+
+  payload       Json
+  correlationId String @db.Uuid
+
+  occurredAt  DateTime  @default(now()) @db.Timestamptz(3)
+  publishedAt DateTime? @db.Timestamptz(3)
+
+  claimedAt DateTime? @db.Timestamptz(3)
+  claimedBy String?   @db.VarChar(100)
+
+  retryCount    Int       @default(0)
+  nextAttemptAt DateTime? @db.Timestamptz(3)
+  lastError     String?   @db.Text
+
+  createdAt DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([publishedAt, nextAttemptAt, createdAt(sort: Asc)])
+}
