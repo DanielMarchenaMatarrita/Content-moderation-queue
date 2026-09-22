@@ -1,0 +1,21 @@
+services:
+  rabbitmq:
+    image: rabbitmq:4.1.4-management
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: moderation_dev
+      RABBITMQ_DEFAULT_PASS: moderation_dev
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+volumes:
+  rabbitmq_data:

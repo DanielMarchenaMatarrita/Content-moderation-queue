@@ -31,6 +31,33 @@
 $ yarn install
 ```
 
+## RabbitMQ development
+
+The Compose service uses development-only credentials: `moderation_dev` / `moderation_dev`.
+Copy `RABBITMQ_URL` from `.env.example` into your local `.env` before using the
+messaging infrastructure.
+
+Run these commands from the repository root:
+
+```bash
+docker compose up -d rabbitmq
+docker compose ps
+docker compose logs rabbitmq
+docker compose down
+```
+
+- AMQP: `localhost:5672`
+- Management UI: `http://localhost:15672`
+
+To reset RabbitMQ manually:
+
+```bash
+docker compose down -v
+```
+
+The `-v` option permanently removes local RabbitMQ data. This foundation does
+not yet include a publisher, consumer, retry/DLQ topology, or moderation flow.
+
 ## Compile and run the project
 
 ```bash
