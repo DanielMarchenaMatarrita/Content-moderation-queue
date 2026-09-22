@@ -5,15 +5,8 @@ import {
 } from '@app/contracts';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import { CONTENT_SUBMITTED_CONSUMER_CONFIG } from './content-submitted-consumer.constants.js';
-import {
-  IdempotentMessageExecutorService,
-  type TransactionClient,
-} from './idempotent-message-executor.service.js';
-
-export type ContentSubmittedProcessor = (
-  transaction: TransactionClient,
-  event: ContentSubmittedEvent,
-) => Promise<void>;
+import { IdempotentMessageExecutorService } from './idempotent-message-executor.service.js';
+import { ContentModerationProcessorService } from './moderation/content-moderation-processor.service.js';
 
 export type ContentSubmittedConsumerResult =
   | { status: 'processed' | 'duplicate'; event: ContentSubmittedEvent }
@@ -26,12 +19,12 @@ type MessageAcknowledger = Pick<Channel, 'ack'>;
 export class ContentSubmittedConsumerService {
   constructor(
     private readonly executor: IdempotentMessageExecutorService,
+    private readonly processor: ContentModerationProcessorService,
   ) {}
 
   async handleMessage(
     message: ConsumeMessage,
     channel: MessageAcknowledger,
-    processor: ContentSubmittedProcessor,
   ): Promise<ContentSubmittedConsumerResult> {
     const parsed = this.parseMessage(message);
     if (!parsed.valid) {
@@ -44,7 +37,9 @@ export class ContentSubmittedConsumerService {
       const status = await this.executor.executeOnce(
         event.eventId,
         CONTENT_SUBMITTED_CONSUMER_CONFIG.consumerName,
-        (transaction) => processor(transaction, event),
+        async (transaction) => {
+          await this.processor.process(transaction, event.payload.contentId);
+        },
       );
 
       channel.ack(message);
@@ -88,8 +83,8 @@ export class ContentSubmittedConsumerService {
     if (!isUuid(value.correlationId)) {
       return { valid: false, reason: 'correlationId must be a UUID' };
     }
-    if (!isRecord(value.payload) || !isNonEmptyString(value.payload.contentId)) {
-      return { valid: false, reason: 'payload.contentId must be a non-empty string' };
+    if (!isRecord(value.payload) || !isUuid(value.payload.contentId)) {
+      return { valid: false, reason: 'payload.contentId must be a UUID' };
     }
 
     const metadataError = validateMetadata(message.properties, value);
@@ -123,10 +118,6 @@ function validateMetadata(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
 }
 
 function isUuid(value: unknown): value is string {
