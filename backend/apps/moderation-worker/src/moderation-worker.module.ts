@@ -1,10 +1,16 @@
 import { Module } from '@nestjs/common';
-import { ModerationWorkerController } from './moderation-worker.controller.js';
-import { ModerationWorkerService } from './moderation-worker.service.js';
+import { PrismaModule } from '@app/database';
+import { MessagingModule } from '@app/messaging';
+import { ContentSubmittedConsumerService } from './content-submitted-consumer.service.js';
+import { ContentSubmittedTopologyService } from './content-submitted-topology.service.js';
+import { IdempotentMessageExecutorService } from './idempotent-message-executor.service.js';
 
 @Module({
-  imports: [],
-  controllers: [ModerationWorkerController],
-  providers: [ModerationWorkerService],
+  imports: [MessagingModule, PrismaModule],
+  providers: [
+    ContentSubmittedConsumerService,
+    ContentSubmittedTopologyService,
+    IdempotentMessageExecutorService,
+  ],
 })
 export class ModerationWorkerModule {}
