@@ -21,7 +21,27 @@
     "types": [
       "vitest/globals",
       "node"
-    ]
+    ],
+    "paths": {
+      "@app/contracts": [
+        "./libs/contracts/src/index.ts"
+      ],
+      "@app/contracts/*": [
+        "./libs/contracts/src/*"
+      ],
+      "@app/database": [
+        "./libs/database/src/index.ts"
+      ],
+      "@app/database/*": [
+        "./libs/database/src/*"
+      ],
+      "@app/messaging": [
+        "./libs/messaging/src/index.ts"
+      ],
+      "@app/messaging/*": [
+        "./libs/messaging/src/*"
+      ]
+    }
   },
   "files": [],
   "references": [
