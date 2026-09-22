@@ -7,6 +7,7 @@ import type {
   IdempotentMessageExecutorService,
   TransactionClient,
 } from './idempotent-message-executor.service.js';
+import type { ContentModerationProcessorService } from './moderation/content-moderation-processor.service.js';
 
 const validEvent = {
   eventId: '68191604-b060-4e20-ac85-d38456704f08',
@@ -33,14 +34,17 @@ function createMessage(
 
 function createHarness(
   executeOnce: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue('processed'),
+  process: ReturnType<typeof vi.fn> = vi.fn().mockResolvedValue(undefined),
 ) {
   const executor = { executeOnce } as unknown as IdempotentMessageExecutorService;
+  const processor = { process } as unknown as ContentModerationProcessorService;
   const ack = vi.fn();
   const channel = { ack } as unknown as Pick<Channel, 'ack'>;
 
   return {
-    service: new ContentSubmittedConsumerService(executor),
+    service: new ContentSubmittedConsumerService(executor, processor),
     executeOnce,
+    process,
     ack,
     channel,
   };
@@ -64,6 +68,7 @@ describe('ContentSubmittedConsumerService', () => {
     ['wrong event type', { ...validEvent, eventType: 'content.deleted' }],
     ['future version', { ...validEvent, eventVersion: 2 }],
     ['invalid payload', { ...validEvent, payload: { contentId: '' } }],
+    ['non-UUID contentId', { ...validEvent, payload: { contentId: 'abc' } }],
   ])('rejects %s', (_name, body) => {
     const harness = createHarness();
     expect(harness.service.parseMessage(createMessage(body)).valid).toBe(false);
@@ -92,7 +97,6 @@ describe('ContentSubmittedConsumerService', () => {
       harness.service.handleMessage(
         createMessage('{broken'),
         harness.channel,
-        vi.fn(),
       ),
     ).resolves.toMatchObject({ status: 'invalid' });
     expect(harness.executeOnce).not.toHaveBeenCalled();
@@ -102,13 +106,12 @@ describe('ContentSubmittedConsumerService', () => {
   it('ACKs a duplicate without invoking a processor callback', async () => {
     const executeOnce = vi.fn().mockResolvedValue('duplicate');
     const harness = createHarness(executeOnce);
-    const processor = vi.fn().mockResolvedValue(undefined);
     const message = createMessage();
 
     await expect(
-      harness.service.handleMessage(message, harness.channel, processor),
+      harness.service.handleMessage(message, harness.channel),
     ).resolves.toMatchObject({ status: 'duplicate' });
-    expect(processor).not.toHaveBeenCalled();
+    expect(harness.process).not.toHaveBeenCalled();
     expect(harness.ack).toHaveBeenCalledWith(message);
     expect(executeOnce).toHaveBeenCalledWith(
       validEvent.eventId,
@@ -128,39 +131,51 @@ describe('ContentSubmittedConsumerService', () => {
       completeProcessing = resolve;
     });
     const transaction = {} as TransactionClient;
-    const executeOnce = vi.fn().mockImplementation(async (_id, _name, callback) => {
-      await callback(transaction);
-      return 'processed';
-    });
-    const harness = createHarness(executeOnce);
-    const processor = vi.fn().mockReturnValue(processing);
+    const executeOnce = vi
+      .fn()
+      .mockImplementation(async (_id, _name, callback) => {
+        await callback(transaction);
+        return 'processed';
+      });
+    const process = vi.fn().mockReturnValue(processing);
+    const harness = createHarness(executeOnce, process);
     const message = createMessage();
 
-    const handling = harness.service.handleMessage(
-      message,
-      harness.channel,
-      processor,
-    );
-    await vi.waitFor(() => expect(processor).toHaveBeenCalledOnce());
+    const handling = harness.service.handleMessage(message, harness.channel);
+    await vi.waitFor(() => expect(process).toHaveBeenCalledOnce());
     expect(harness.ack).not.toHaveBeenCalled();
+    expect(process).toHaveBeenCalledWith(
+      transaction,
+      validEvent.payload.contentId,
+    );
 
     completeProcessing();
-    await expect(handling).resolves.toMatchObject({ status: 'processed' });
+    await expect(handling).resolves.toMatchObject({
+      status: 'processed',
+      event: validEvent,
+    });
     expect(harness.ack).toHaveBeenCalledWith(message);
   });
 
   it('returns failed and does not ACK when processing fails', async () => {
     const failure = new Error('transaction rolled back');
-    const executeOnce = vi.fn().mockRejectedValue(failure);
-    const harness = createHarness(executeOnce);
+    const transaction = {} as TransactionClient;
+    const executeOnce = vi
+      .fn()
+      .mockImplementation(async (_id, _name, callback) => {
+        await callback(transaction);
+        return 'processed';
+      });
+    const process = vi.fn().mockRejectedValue(failure);
+    const harness = createHarness(executeOnce, process);
 
     await expect(
-      harness.service.handleMessage(
-        createMessage(),
-        harness.channel,
-        vi.fn(),
-      ),
+      harness.service.handleMessage(createMessage(), harness.channel),
     ).resolves.toMatchObject({ status: 'failed', error: failure });
+    expect(process).toHaveBeenCalledWith(
+      transaction,
+      validEvent.payload.contentId,
+    );
     expect(harness.ack).not.toHaveBeenCalled();
   });
 });
