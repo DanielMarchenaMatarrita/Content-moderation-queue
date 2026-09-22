@@ -37,8 +37,19 @@ function createHarness(events: OutboxEvent[] = []) {
   const updateMany = vi.fn().mockResolvedValue({ count: 1 });
   const publish = vi.fn().mockResolvedValue(true);
   const close = vi.fn().mockResolvedValue(undefined);
-  const channel = { publish, close } as unknown as ChannelWrapper;
-  const createChannel = vi.fn().mockReturnValue(channel);
+  const assertExchange = vi.fn().mockResolvedValue(undefined);
+  const assertQueue = vi.fn().mockResolvedValue(undefined);
+  const bindQueue = vi.fn().mockResolvedValue(undefined);
+  const setupChannel = { assertExchange, assertQueue, bindQueue };
+  let setup: ((channel: typeof setupChannel) => Promise<void>) | undefined;
+  const waitForConnect = vi.fn().mockImplementation(async () => {
+    await setup?.(setupChannel);
+  });
+  const channel = { publish, close, waitForConnect } as unknown as ChannelWrapper;
+  const createChannel = vi.fn().mockImplementation((options) => {
+    setup = options.setup;
+    return channel;
+  });
   const prisma = {
     $queryRaw: queryRaw,
     outboxEvent: { updateMany },
@@ -48,8 +59,6 @@ function createHarness(events: OutboxEvent[] = []) {
   } as unknown as RabbitMqConnectionService;
   const service = new OutboxPublisherService(prisma, rabbitMq);
 
-  service.onModuleInit();
-
   return {
     service,
     queryRaw,
@@ -57,6 +66,9 @@ function createHarness(events: OutboxEvent[] = []) {
     publish,
     close,
     createChannel,
+    assertExchange,
+    assertQueue,
+    bindQueue,
   };
 }
 
@@ -76,6 +88,7 @@ describe('OutboxPublisherService', () => {
   it('claims atomically and does not publish an empty outbox', async () => {
     const harness = createHarness();
     service = harness.service;
+    await service.onModuleInit();
 
     await service.publishPendingBatch();
 
@@ -91,6 +104,7 @@ describe('OutboxPublisherService', () => {
     const event = createOutboxEvent();
     const harness = createHarness([event]);
     service = harness.service;
+    await service.onModuleInit();
 
     await service.publishPendingBatch();
 
@@ -100,6 +114,20 @@ describe('OutboxPublisherService', () => {
         confirm: true,
         publishTimeout: OUTBOX_PUBLISHER_CONFIG.publishTimeoutMs,
       }),
+    );
+    expect(harness.assertExchange).toHaveBeenCalledWith(
+      RABBITMQ_TOPOLOGY.eventsExchange.name,
+      RABBITMQ_TOPOLOGY.eventsExchange.type,
+      { durable: true },
+    );
+    expect(harness.assertQueue).toHaveBeenCalledWith(
+      RABBITMQ_TOPOLOGY.contentSubmitted.queueName,
+      { durable: true, exclusive: false, autoDelete: false },
+    );
+    expect(harness.bindQueue).toHaveBeenCalledWith(
+      RABBITMQ_TOPOLOGY.contentSubmitted.queueName,
+      RABBITMQ_TOPOLOGY.eventsExchange.name,
+      CONTENT_SUBMITTED_EVENT.routingKey,
     );
     expect(harness.publish).toHaveBeenCalledWith(
       RABBITMQ_TOPOLOGY.eventsExchange.name,
@@ -150,6 +178,7 @@ describe('OutboxPublisherService', () => {
     });
     const harness = createHarness([createOutboxEvent()]);
     service = harness.service;
+    await service.onModuleInit();
     harness.publish.mockImplementationOnce(() => {
       publishStarted();
       return confirmation;
@@ -173,6 +202,7 @@ describe('OutboxPublisherService', () => {
     const event = createOutboxEvent({ retryCount: 2 });
     const harness = createHarness([event]);
     service = harness.service;
+    await service.onModuleInit();
     harness.publish.mockRejectedValueOnce(
       new Error('Broker amqp://guest:secret@localhost:5672 unavailable'),
     );
@@ -196,9 +226,11 @@ describe('OutboxPublisherService', () => {
     ['unknown event type', { eventType: 'content.unknown' }],
     ['unsupported event version', { eventVersion: 2 }],
     ['invalid content payload', { payload: { contentId: '' } }],
+    ['non-UUID content payload', { payload: { contentId: 'not-a-uuid' } }],
   ])('does not publish an %s', async (_name, overrides) => {
     const harness = createHarness([createOutboxEvent(overrides)]);
     service = harness.service;
+    await service.onModuleInit();
 
     await service.publishPendingBatch();
 
@@ -217,6 +249,7 @@ describe('OutboxPublisherService', () => {
   it('stops scheduling cycles and closes only its channel on shutdown', async () => {
     const harness = createHarness();
     service = harness.service;
+    await service.onModuleInit();
 
     expect(vi.getTimerCount()).toBe(1);
     await service.onModuleDestroy();

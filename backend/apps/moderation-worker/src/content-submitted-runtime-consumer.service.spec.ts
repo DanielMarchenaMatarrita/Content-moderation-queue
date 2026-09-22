@@ -4,6 +4,7 @@ import type { ChannelWrapper } from 'amqp-connection-manager';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import { CONTENT_SUBMITTED_CONSUMER_CONFIG } from './content-submitted-consumer.constants.js';
 import { ContentSubmittedConsumerService } from './content-submitted-consumer.service.js';
+import type { ContentSubmittedFailureRouterService } from './content-submitted-failure-router.service.js';
 import { ContentSubmittedRuntimeConsumerService } from './content-submitted-runtime-consumer.service.js';
 import type { ContentSubmittedTopologyService } from './content-submitted-topology.service.js';
 import type {
@@ -51,10 +52,17 @@ function createHarness(consumerOverride?: ContentSubmittedConsumerService) {
     ({ handleMessage } as unknown as ContentSubmittedConsumerService);
   const declare = vi.fn().mockResolvedValue(undefined);
   const topology = { declare } as unknown as ContentSubmittedTopologyService;
+  const publishRetry = vi.fn().mockResolvedValue(undefined);
+  const publishDeadLetter = vi.fn().mockResolvedValue(undefined);
+  const failureRouter = {
+    publishRetry,
+    publishDeadLetter,
+  } as unknown as ContentSubmittedFailureRouterService;
   const service = new ContentSubmittedRuntimeConsumerService(
     rabbitMq,
     consumer,
     topology,
+    failureRouter,
   );
 
   return {
@@ -70,6 +78,8 @@ function createHarness(consumerOverride?: ContentSubmittedConsumerService) {
     declare,
     createChannel,
     handleMessage,
+    publishRetry,
+    publishDeadLetter,
     getDelivery: () => delivery,
     runSetup: (nextChannel: Channel) => setup?.(nextChannel),
   };
@@ -103,7 +113,7 @@ describe('ContentSubmittedRuntimeConsumerService', () => {
     );
   });
 
-  it('delegates with the delivery channel and never ACKs in the runtime layer', async () => {
+  it('does not route or ACK a successfully processed delivery in the runtime layer', async () => {
     const harness = createHarness();
     const message = { content: Buffer.from('{}') } as ConsumeMessage;
 
@@ -116,6 +126,8 @@ describe('ContentSubmittedRuntimeConsumerService', () => {
       harness.deliveryChannel,
     );
     expect(harness.ack).not.toHaveBeenCalled();
+    expect(harness.publishRetry).not.toHaveBeenCalled();
+    expect(harness.publishDeadLetter).not.toHaveBeenCalled();
   });
 
   it('redeclares topology and binds delivery handling to a reconnected channel', async () => {
@@ -200,6 +212,124 @@ describe('ContentSubmittedRuntimeConsumerService', () => {
     await harness.service.handleDelivery(null, harness.deliveryChannel);
 
     expect(harness.handleMessage).not.toHaveBeenCalled();
+    expect(harness.ack).not.toHaveBeenCalled();
+  });
+
+  it('does not route or ACK a duplicate in the runtime layer', async () => {
+    const harness = createHarness();
+    const message = { content: Buffer.from('{}') } as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({ status: 'duplicate' });
+
+    await harness.service.handleDelivery(message, harness.deliveryChannel);
+
+    expect(harness.publishRetry).not.toHaveBeenCalled();
+    expect(harness.publishDeadLetter).not.toHaveBeenCalled();
+    expect(harness.ack).not.toHaveBeenCalled();
+  });
+
+  it('publishes invalid messages to DLQ before ACK', async () => {
+    const harness = createHarness();
+    const message = {
+      content: Buffer.from('{broken'),
+      properties: { headers: {} },
+    } as unknown as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({
+      status: 'invalid',
+      reason: 'Message body is not valid JSON',
+    });
+
+    await harness.service.handleDelivery(message, harness.deliveryChannel);
+
+    expect(harness.publishDeadLetter).toHaveBeenCalledWith(
+      message,
+      'Message body is not valid JSON',
+    );
+    expect(harness.publishRetry).not.toHaveBeenCalled();
+    expect(harness.ack).toHaveBeenCalledWith(message);
+    expect(harness.publishDeadLetter.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.ack.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not ACK invalid messages when DLQ publication fails', async () => {
+    const harness = createHarness();
+    const message = {
+      content: Buffer.from('{broken'),
+      properties: { headers: {} },
+    } as unknown as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({ status: 'invalid', reason: 'bad' });
+    harness.publishDeadLetter.mockRejectedValueOnce(new Error('broker unavailable'));
+
+    await expect(
+      harness.service.handleDelivery(message, harness.deliveryChannel),
+    ).rejects.toThrow('broker unavailable');
+    expect(harness.ack).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [undefined, 1],
+    [1, 2],
+    [2, 3],
+  ])('routes failed retry count %s as delayed retry %s', async (current, next) => {
+    const harness = createHarness();
+    const message = {
+      content: Buffer.from('{}'),
+      properties: {
+        headers: current === undefined ? {} : { 'x-retry-count': current },
+      },
+    } as unknown as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({
+      status: 'failed',
+      event: {},
+      error: new Error('temporary'),
+    });
+
+    await harness.service.handleDelivery(message, harness.deliveryChannel);
+
+    expect(harness.publishRetry).toHaveBeenCalledWith(message, next);
+    expect(harness.publishDeadLetter).not.toHaveBeenCalled();
+    expect(harness.ack).toHaveBeenCalledWith(message);
+    expect(harness.publishRetry.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.ack.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('routes retry count 3 to DLQ instead of retry', async () => {
+    const harness = createHarness();
+    const failure = new Error('still failing');
+    const message = {
+      content: Buffer.from('{}'),
+      properties: { headers: { 'x-retry-count': 3 } },
+    } as unknown as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({
+      status: 'failed',
+      event: {},
+      error: failure,
+    });
+
+    await harness.service.handleDelivery(message, harness.deliveryChannel);
+
+    expect(harness.publishDeadLetter).toHaveBeenCalledWith(message, failure);
+    expect(harness.publishRetry).not.toHaveBeenCalled();
+    expect(harness.ack).toHaveBeenCalledWith(message);
+  });
+
+  it('does not ACK a processing failure when retry publication fails', async () => {
+    const harness = createHarness();
+    const message = {
+      content: Buffer.from('{}'),
+      properties: { headers: {} },
+    } as unknown as ConsumeMessage;
+    harness.handleMessage.mockResolvedValueOnce({
+      status: 'failed',
+      event: {},
+      error: new Error('temporary'),
+    });
+    harness.publishRetry.mockRejectedValueOnce(new Error('confirm failed'));
+
+    await expect(
+      harness.service.handleDelivery(message, harness.deliveryChannel),
+    ).rejects.toThrow('confirm failed');
     expect(harness.ack).not.toHaveBeenCalled();
   });
 
