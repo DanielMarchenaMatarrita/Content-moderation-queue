@@ -1,1 +1,2 @@
-export * from './contracts.module.js';
+export * from './events/integration-event.js';
+export * from './events/content-submitted.event.js';
