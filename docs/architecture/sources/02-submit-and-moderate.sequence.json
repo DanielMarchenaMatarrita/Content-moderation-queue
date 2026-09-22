@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Content Moderation Queue\nSecuencia de envio y moderacion — AS-IS",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [1060, 540]
+  },
+  "participants": [
+    { "id": "client", "type": "external", "label": "Cliente", "sublabel": "consumidor HTTP" },
+    { "id": "content-api", "type": "backend", "label": "Content API", "sublabel": "NestJS" },
+    { "id": "postgresql", "type": "database", "label": "PostgreSQL", "sublabel": "Content / History / Outbox" },
+    { "id": "outbox-publisher", "type": "backend", "label": "Outbox Publisher", "sublabel": "polling en runtime API" },
+    { "id": "rabbitmq", "type": "messagebus", "label": "RabbitMQ", "sublabel": "content-submitted" },
+    { "id": "moderation-worker", "type": "backend", "label": "Moderation Worker", "sublabel": "NestJS application context" }
+  ],
+  "segments": [
+    { "from": 172, "to": 260, "label": "Envio sincrono" },
+    { "from": 290, "to": 448, "label": "Moderacion asincrona" }
+  ],
+  "messages": [
+    { "from": "client", "to": "content-api", "y": 180, "label": "POST /contents", "variant": "emphasis" },
+    { "from": "content-api", "to": "postgresql", "y": 214, "label": "transaction: Content + History + OutboxEvent", "variant": "default" },
+    { "from": "content-api", "to": "client", "y": 248, "label": "201 + submissionEventId + correlationId", "variant": "return" },
+    { "from": "outbox-publisher", "to": "postgresql", "y": 306, "label": "claim pending outbox events", "variant": "default" },
+    { "from": "postgresql", "to": "outbox-publisher", "y": 340, "label": "pending events", "variant": "return" },
+    { "from": "outbox-publisher", "to": "rabbitmq", "y": 374, "label": "publish content.submitted", "variant": "dashed" },
+    { "from": "rabbitmq", "to": "moderation-worker", "y": 408, "label": "deliver message", "variant": "dashed" },
+    { "from": "moderation-worker", "to": "postgresql", "y": 442, "label": "persist status + result + history", "variant": "emphasis" }
+  ],
+  "activations": [
+    { "participant": "content-api", "from": 172, "to": 256, "type": "backend" },
+    { "participant": "postgresql", "from": 208, "to": 224, "type": "database" },
+    { "participant": "outbox-publisher", "from": 298, "to": 378, "type": "backend" },
+    { "participant": "rabbitmq", "from": 368, "to": 414, "type": "messagebus" },
+    { "participant": "moderation-worker", "from": 400, "to": 448, "type": "backend" },
+    { "participant": "postgresql", "from": 434, "to": 450, "type": "database" }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Envio sincrono",
+      "items": [
+        "POST /contents persiste en una sola transaccion: Content, ModerationHistory y OutboxEvent.",
+        "La API responde 201 con eventId y correlationId sin esperar la moderacion.",
+        "Consultas de estado se leen despues desde Content API."
+      ]
+    },
+    {
+      "dot": "violet",
+      "title": "Publicacion asincrona",
+      "items": [
+        "Outbox Publisher reclama eventos pendientes por polling.",
+        "El evento se publica por AMQP hacia RabbitMQ.",
+        "RabbitMQ entrega el mensaje al Moderation Worker."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Moderacion persistida",
+      "items": [
+        "El worker modera el contenido de forma deterministica.",
+        "Persiste el estado final, el resultado y el historial en PostgreSQL.",
+        "El update de estado es condicional al estado PENDING."
+      ]
+    }
+  ]
+}
