@@ -10,11 +10,11 @@
 
 ## 2. M - Moderation Read API
 
-- [ ] 2.1 Create `backend/apps/api/src/moderation-read/**` module, controller, service, explicit response models, and local Swagger metadata without editing `AppModule`, `ContentService`, or existing Content files.
-- [ ] 2.2 Implement `GET /contents/:id/moderation-results` with UUID validation, prior Content existence check, `404`, scoped explicit projection, and `createdAt DESC, id DESC` ordering.
-- [ ] 2.3 Implement `GET /contents/:id/moderation-history` with UUID validation, prior Content existence check, `404`, scoped explicit projection, and `createdAt ASC, id ASC` ordering.
-- [ ] 2.4 Add service tests proving exact fields/order/filtering, empty arrays for existing Content, Content `404`, and absence of Prisma write calls.
-- [ ] 2.5 Add standalone HTTP/routing tests proving both nested paths reach moderation handlers, `/contents/:id` remains distinct, invalid UUIDs return `400`, and Swagger exposes both operations under `moderation`.
+- [x] 2.1 Create `backend/apps/api/src/moderation-read/**` module, controller, service, explicit response models, and local Swagger metadata without editing `AppModule`, `ContentService`, or existing Content files.
+- [x] 2.2 Implement `GET /contents/:id/moderation-results` with UUID validation, prior Content existence check, `404`, scoped explicit projection, and `createdAt DESC, id DESC` ordering.
+- [x] 2.3 Implement `GET /contents/:id/moderation-history` with UUID validation, prior Content existence check, `404`, scoped explicit projection, and `createdAt ASC, id ASC` ordering.
+- [x] 2.4 Add service tests proving exact fields/order/filtering, empty arrays for existing Content, Content `404`, and absence of Prisma write calls.
+- [x] 2.5 Add standalone HTTP/routing tests proving both nested paths reach moderation handlers, `/contents/:id` remains distinct, invalid UUIDs return `400`, and Swagger exposes both operations under `moderation`.
 
 ## 3. I - Internal Diagnostics API
 
