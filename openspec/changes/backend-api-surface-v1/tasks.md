@@ -28,9 +28,9 @@
 
 ## 4. INT - Final Integration and Regression
 
-- [ ] 4.1 After U, M, and I complete, register `UsersModule`, `ModerationReadModule`, and `InternalDiagnosticsModule` once in `backend/apps/api/src/app.module.ts` and update module-wiring tests.
-- [ ] 4.2 Add assembled API routing tests for all 12 target endpoints, including proof that nested moderation routes are not intercepted by `GET /contents/:id` and that existing Content response contracts remain unchanged.
-- [ ] 4.3 Generate the assembled Swagger document in tests and verify all 12 paths/methods, four required tags, request/query/path parameters, response models, and applicable `400`, `404`, and `409` responses.
-- [ ] 4.4 Run focused Users, moderation-read, internal-diagnostics, Content, Outbox Publisher, worker, processor, and idempotency unit suites; fix only regressions within this change's allowed API files.
-- [ ] 4.5 Run API and worker builds plus type-aware lint, confirming no edits to Prisma schema/migrations, event contracts, publisher, RabbitMQ topology, worker, idempotent executor, or moderation processor.
-- [ ] 4.6 Run the existing PostgreSQL/RabbitMQ E2E flow and verify `POST /contents`, outbox publication, RabbitMQ delivery, worker moderation, history/result persistence, processed-message idempotency, and `GET /contents/:id` still pass end to end.
+- [x] 4.1 After U, M, and I complete, register `UsersModule`, `ModerationReadModule`, and `InternalDiagnosticsModule` once in `backend/apps/api/src/app.module.ts` and update module-wiring tests.
+- [x] 4.2 Add assembled API routing tests for all 12 target endpoints, including proof that nested moderation routes are not intercepted by `GET /contents/:id` and that existing Content response contracts remain unchanged.
+- [x] 4.3 Generate the assembled Swagger document in tests and verify all 12 paths/methods, four required tags, request/query/path parameters, response models, and applicable `400`, `404`, and `409` responses.
+- [x] 4.4 Run focused Users, moderation-read, internal-diagnostics, Content, Outbox Publisher, worker, processor, and idempotency unit suites; fix only regressions within this change's allowed API files.
+- [x] 4.5 Run API and worker builds plus type-aware lint, confirming no edits to Prisma schema/migrations, event contracts, publisher, RabbitMQ topology, worker, idempotent executor, or moderation processor.
+- [x] 4.6 Run the existing PostgreSQL/RabbitMQ E2E flow and verify `POST /contents`, outbox publication, RabbitMQ delivery, worker moderation, history/result persistence, processed-message idempotency, and `GET /contents/:id` still pass end to end.
