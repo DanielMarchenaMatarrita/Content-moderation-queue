@@ -1,12 +1,12 @@
 ## 1. U - Users API
 
-- [ ] 1.1 Create `backend/apps/api/src/users/**` module, controller, service, request/query DTOs, explicit public response models, and local Swagger metadata without editing `AppModule`.
-- [ ] 1.2 Implement `POST /users` validation for allowed fields, email/display-name normalization, password length 8-128, Argon2 hashing, explicit `USER` role persistence, and public-field-only response selection.
-- [ ] 1.3 Implement case-insensitive duplicate lookup and Prisma unique-conflict translation so existing and concurrent equivalent emails return `409 Conflict`.
-- [ ] 1.4 Implement `GET /users` pagination, exact role filtering, trimmed case-insensitive substring `q` search across email/display name, deterministic ordering, matching count query, and public projections.
-- [ ] 1.5 Implement UUID-validated `GET /users/:id` with explicit public projection and `404 Not Found` behavior.
-- [ ] 1.6 Add DTO and service tests covering normalization, Argon2 hash persistence, forced `USER` role, duplicate conflicts, pagination/filter/search/order, detail/404, and absence of `password`/`passwordHash`.
-- [ ] 1.7 Add standalone Users HTTP tests covering `201`, invalid password `400`, protected-field/role rejection `400`, duplicate `409`, list/detail contracts, UUID validation, and Swagger declarations.
+- [x] 1.1 Create `backend/apps/api/src/users/**` module, controller, service, request/query DTOs, explicit public response models, and local Swagger metadata without editing `AppModule`.
+- [x] 1.2 Implement `POST /users` validation for allowed fields, email/display-name normalization, password length 8-128, Argon2 hashing, explicit `USER` role persistence, and public-field-only response selection.
+- [x] 1.3 Implement case-insensitive duplicate lookup and Prisma unique-conflict translation so existing and concurrent equivalent emails return `409 Conflict`.
+- [x] 1.4 Implement `GET /users` pagination, exact role filtering, trimmed case-insensitive substring `q` search across email/display name, deterministic ordering, matching count query, and public projections.
+- [x] 1.5 Implement UUID-validated `GET /users/:id` with explicit public projection and `404 Not Found` behavior.
+- [x] 1.6 Add DTO and service tests covering normalization, Argon2 hash persistence, forced `USER` role, duplicate conflicts, pagination/filter/search/order, detail/404, and absence of `password`/`passwordHash`.
+- [x] 1.7 Add standalone Users HTTP tests covering `201`, invalid password `400`, protected-field/role rejection `400`, duplicate `409`, list/detail contracts, UUID validation, and Swagger declarations.
 
 ## 2. M - Moderation Read API
 
