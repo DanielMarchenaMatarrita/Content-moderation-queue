@@ -1,4 +1,26 @@
+x-backend-environment: &backend-environment
+  NODE_ENV: production
+  DATABASE_URL: postgresql://cmq_demo:cmq_demo@postgres:5432/cmq_demo
+  DIRECT_URL: postgresql://cmq_demo:cmq_demo@postgres:5432/cmq_demo
+  RABBITMQ_URL: amqp://moderation_dev:moderation_dev@rabbitmq:5672
+
 services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: cmq_demo
+      POSTGRES_USER: cmq_demo
+      POSTGRES_PASSWORD: cmq_demo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cmq_demo -d cmq_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   rabbitmq:
     image: rabbitmq:4.1.4-management
     restart: unless-stopped
@@ -17,5 +39,61 @@ services:
       retries: 5
       start_period: 20s
 
+  api:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    environment: *backend-environment
+    command:
+      - sh
+      - -c
+      - ./node_modules/.bin/prisma migrate deploy && node dist/apps/api/main.js
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => { if (!r.ok) process.exit(1) }).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  moderation-worker:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    init: true
+    environment: *backend-environment
+    command: ["node", "dist/apps/moderation-worker/main.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
 volumes:
+  postgres_data:
   rabbitmq_data:
