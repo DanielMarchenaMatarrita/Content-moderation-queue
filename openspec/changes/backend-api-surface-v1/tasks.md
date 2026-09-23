@@ -18,13 +18,13 @@
 
 ## 3. I - Internal Diagnostics API
 
-- [ ] 3.1 Create `backend/apps/api/src/internal/**` module, controller or controllers, service, query DTOs, explicit list/detail response models, and local Swagger metadata without editing `AppModule`.
-- [ ] 3.2 Implement paginated `GET /internal/outbox-events` with exact `eventType`, UUID `aggregateId`, strict boolean `published` filters, deterministic ordering, matching count query, and a projection that omits `payload`.
-- [ ] 3.3 Implement UUID-validated `GET /internal/outbox-events/:id` with `404` behavior and explicit detail projection including `payload`.
-- [ ] 3.4 Implement paginated `GET /internal/processed-messages` with UUID `eventId` and exact `consumerName` filters, deterministic ordering, matching count query, and four-field projection.
-- [ ] 3.5 Implement UUID-validated `GET /internal/processed-messages/:id` with four-field projection and `404` behavior.
-- [ ] 3.6 Add DTO and service tests covering pagination bounds/defaults, strict boolean parsing, all filters, ordering, detail/404, list payload omission, detail payload inclusion, and explicit processed-message fields.
-- [ ] 3.7 Add module/HTTP tests proving diagnostics import only Prisma, execute no writes, require no publisher/RabbitMQ/worker/idempotency providers, expose only the four GET operations, and document `400`/`404` contracts under `internal diagnostics`.
+- [x] 3.1 Create `backend/apps/api/src/internal/**` module, controller or controllers, service, query DTOs, explicit list/detail response models, and local Swagger metadata without editing `AppModule`.
+- [x] 3.2 Implement paginated `GET /internal/outbox-events` with exact `eventType`, UUID `aggregateId`, strict boolean `published` filters, deterministic ordering, matching count query, and a projection that omits `payload`.
+- [x] 3.3 Implement UUID-validated `GET /internal/outbox-events/:id` with `404` behavior and explicit detail projection including `payload`.
+- [x] 3.4 Implement paginated `GET /internal/processed-messages` with UUID `eventId` and exact `consumerName` filters, deterministic ordering, matching count query, and four-field projection.
+- [x] 3.5 Implement UUID-validated `GET /internal/processed-messages/:id` with four-field projection and `404` behavior.
+- [x] 3.6 Add DTO and service tests covering pagination bounds/defaults, strict boolean parsing, all filters, ordering, detail/404, list payload omission, detail payload inclusion, and explicit processed-message fields.
+- [x] 3.7 Add module/HTTP tests proving diagnostics import only Prisma, execute no writes, require no publisher/RabbitMQ/worker/idempotency providers, expose only the four GET operations, and document `400`/`404` contracts under `internal diagnostics`.
 
 ## 4. INT - Final Integration and Regression
 
