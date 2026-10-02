@@ -1398,6 +1398,90 @@ kbd {
   border-color: var(--color-success);
 }
 
+.concept-tip {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-border);
+  border-left: 3px solid var(--color-info);
+  border-radius: var(--radius-md);
+  color: var(--color-foreground-muted);
+  background: var(--color-surface);
+}
+
+.concept-tip > svg {
+  margin-top: 1px;
+  color: var(--color-info);
+}
+
+.detail-card > .concept-tip {
+  margin: var(--space-4) var(--space-5) 0;
+}
+
+.concept-tip strong,
+.concept-tip p {
+  display: block;
+  margin: 0;
+}
+
+.concept-tip strong {
+  color: var(--color-foreground);
+  font-size: 13px;
+}
+
+.concept-tip p {
+  margin-top: var(--space-1);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.concept-tip-extra {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.concept-tip-note {
+  color: var(--color-foreground-subtle) !important;
+}
+
+.concept-tip-ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.concept-tip-ranges span {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  color: var(--color-foreground-muted);
+  background: var(--color-surface-muted);
+  font: 11px/1.4 var(--mono);
+}
+
+.concept-tip-ranges strong {
+  display: inline;
+  margin-right: var(--space-1);
+  font: inherit;
+  color: var(--color-foreground);
+}
+
+.architecture-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  color: var(--color-foreground-muted);
+  font: 11px/1.4 var(--mono);
+}
+
+.architecture-flow svg {
+  color: var(--color-foreground-subtle);
+}
+
 .decision-row > span:not(.status-badge) {
   color: var(--color-foreground-subtle);
   font: 12px/1 var(--mono);

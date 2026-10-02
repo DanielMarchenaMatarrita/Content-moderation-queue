@@ -7,6 +7,7 @@ import { useToast } from '../app/providers/ToastProvider';
 import { contentsQueryKeys, createContent } from '../features/contents/api';
 import { listUsers, usersQueryKeys } from '../features/users/api';
 import { Button } from '../shared/components/Button';
+import { ConceptTip } from '../shared/components/ConceptTip';
 import { Field, Input, Textarea } from '../shared/components/FormControls';
 import { PageHeader } from '../shared/components/PageHeader';
 import { getErrorMessage } from '../shared/lib/format';
@@ -65,6 +66,10 @@ export function CreateContentPage() {
         title="Submit content"
         description="Create a real content record and begin the asynchronous moderation flow."
         backLink={<Link className="back-link" to="/contents"><ArrowLeft size={16} aria-hidden="true" />Back to contents</Link>}
+      />
+      <ConceptTip
+        title="Procesamiento asíncrono"
+        description="El contenido se registra inicialmente como PENDING. La moderación ocurre posteriormente en el Moderation Worker."
       />
       <form className="form-card" onSubmit={submit} noValidate>
         <Field
