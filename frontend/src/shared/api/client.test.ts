@@ -24,7 +24,7 @@ describe('API client', () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
 
     await expect(apiRequest('/contents')).rejects.toEqual(
-      expect.objectContaining({ status: 0, message: 'Unable to reach the CMQ API.' }),
+      expect.objectContaining({ status: 0, message: 'Unable to reach the PayGrid API.' }),
     );
   });
 });
