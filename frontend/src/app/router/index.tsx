@@ -1,17 +1,10 @@
 import { createBrowserRouter } from 'react-router-dom';
 import { AppShell } from '../layout/AppShell';
-import { ContentDetailPage } from '../../pages/ContentDetailPage';
-import { ContentsPage } from '../../pages/ContentsPage';
-import { CreateContentPage } from '../../pages/CreateContentPage';
 import { DashboardPage } from '../../pages/DashboardPage';
 import { NotFoundPage } from '../../pages/NotFoundPage';
-import { OutboxEventsPage } from '../../pages/OutboxEventsPage';
-import { OutboxEventDetailPage } from '../../pages/OutboxEventDetailPage';
-import { ProcessedMessagesPage } from '../../pages/ProcessedMessagesPage';
-import { ProcessedMessageDetailPage } from '../../pages/ProcessedMessageDetailPage';
-import { CreateUserPage } from '../../pages/CreateUserPage';
-import { UserDetailPage } from '../../pages/UserDetailPage';
-import { UsersPage } from '../../pages/UsersPage';
+import { CreateOrderPage } from '../../pages/CreateOrderPage';
+import { OrderDetailPage } from '../../pages/OrderDetailPage';
+import { OrdersPage } from '../../pages/OrdersPage';
 
 export const router = createBrowserRouter([
   {
@@ -19,16 +12,9 @@ export const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { index: true, element: <DashboardPage /> },
-      { path: 'contents', element: <ContentsPage /> },
-      { path: 'contents/new', element: <CreateContentPage /> },
-      { path: 'contents/:id', element: <ContentDetailPage /> },
-      { path: 'users', element: <UsersPage /> },
-      { path: 'users/new', element: <CreateUserPage /> },
-      { path: 'users/:id', element: <UserDetailPage /> },
-      { path: 'system/outbox', element: <OutboxEventsPage /> },
-      { path: 'system/outbox/:id', element: <OutboxEventDetailPage /> },
-      { path: 'system/processed', element: <ProcessedMessagesPage /> },
-      { path: 'system/processed/:id', element: <ProcessedMessageDetailPage /> },
+      { path: 'orders', element: <OrdersPage /> },
+      { path: 'orders/new', element: <CreateOrderPage /> },
+      { path: 'orders/:id', element: <OrderDetailPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

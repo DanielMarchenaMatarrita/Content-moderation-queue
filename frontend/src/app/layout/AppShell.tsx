@@ -1,16 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import {
-  BookOpen,
   List,
-  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import { navigationSections } from '../../shared/config/navigation';
 import { IconButton } from '../../shared/components/IconButton';
 import { Sheet } from '../../shared/components/Modal';
-import { ActivityCenter } from './ActivityCenter';
-import { CommandPalette } from './CommandPalette';
-import { QuickActions } from './QuickActions';
 
 function Navigation({ onNavigate }: { onNavigate?: () => void }) {
   return (
@@ -39,15 +34,6 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         ))}
       </nav>
-      <a
-        className="nav-link api-docs-link"
-        href="/api/docs"
-        target="_blank"
-        rel="noreferrer"
-      >
-        <BookOpen size={18} aria-hidden="true" />
-        API documentation
-      </a>
     </>
   );
 }
@@ -55,20 +41,7 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
 export function AppShell() {
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
-  const [commandOpen, setCommandOpen] = useState(false);
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const [activityOpen, setActivityOpen] = useState(false);
-
-  useEffect(() => {
-    function handleShortcut(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
-        event.preventDefault();
-        setCommandOpen(true);
-      }
-    }
-    window.addEventListener('keydown', handleShortcut);
-    return () => window.removeEventListener('keydown', handleShortcut);
-  }, []);
 
   useEffect(() => {
     mainRef.current?.focus();
@@ -82,14 +55,14 @@ export function AppShell() {
 
       <aside className="sidebar">
         <div className="brand-block">
-          <div className="brand-mark" aria-hidden="true">CMQ</div>
+          <div className="brand-mark" aria-hidden="true">PG</div>
           <div>
-            <strong>Content Moderation</strong>
-            <span>Queue observatory</span>
+            <strong>PayGrid</strong>
+            <span>Payment processing</span>
           </div>
         </div>
         <Navigation />
-        <p className="sidebar-note">Investigation II / Message Queue demonstration</p>
+        <p className="sidebar-note">Asynchronous payment operations</p>
       </aside>
 
       <div className="workspace">
@@ -99,19 +72,11 @@ export function AppShell() {
               <List size={20} aria-hidden="true" />
             </IconButton>
             <div>
-              <strong>CMQ</strong>
-              <span>System observatory</span>
+              <strong>PayGrid</strong>
+              <span>Payment processing</span>
             </div>
           </div>
-          <button className="command-trigger" type="button" aria-label="Search commands" onClick={() => setCommandOpen(true)}>
-            <MagnifyingGlass size={17} aria-hidden="true" />
-            <span>Search commands</span>
-            <kbd>Ctrl K</kbd>
-          </button>
-          <div className="topbar-actions">
-            <QuickActions />
-            <ActivityCenter open={activityOpen} onOpenChange={setActivityOpen} />
-          </div>
+          <span className="topbar-product">Order processing workspace</span>
         </header>
 
         <main ref={mainRef} id="main-content" className="main-content" tabIndex={-1}>
@@ -122,15 +87,14 @@ export function AppShell() {
       <Sheet
         open={mobileNavOpen}
         onOpenChange={setMobileNavOpen}
-        title="CMQ navigation"
-        description="Content Moderation Queue system observatory"
+        title="PayGrid navigation"
+        description="Payment processing workspace"
         side="left"
       >
         <div className="mobile-navigation">
           <Navigation onNavigate={() => setMobileNavOpen(false)} />
         </div>
       </Sheet>
-      <CommandPalette open={commandOpen} onOpenChange={setCommandOpen} />
     </div>
   );
 }
