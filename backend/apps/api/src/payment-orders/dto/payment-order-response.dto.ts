@@ -1,0 +1,53 @@
+import { ApiProperty } from '@nestjs/swagger';
+import {
+  PaymentOrderStatus,
+  SimulationScenario,
+} from '../../../../../generated/prisma/client.js';
+
+export class PaymentOrderResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ minimum: 1 })
+  amount: number;
+
+  @ApiProperty({ pattern: '^[A-Z]{3}$' })
+  currency: string;
+
+  @ApiProperty({ enum: PaymentOrderStatus })
+  status: (typeof PaymentOrderStatus)[keyof typeof PaymentOrderStatus];
+
+  @ApiProperty({ enum: SimulationScenario })
+  simulationScenario: (typeof SimulationScenario)[keyof typeof SimulationScenario];
+
+  @ApiProperty({ minimum: 0 })
+  retryCount: number;
+
+  @ApiProperty({ nullable: true })
+  lastError: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt: Date;
+
+  @ApiProperty({ format: 'date-time' })
+  updatedAt: Date;
+}
+
+export class CreatedPaymentOrderResponseDto extends PaymentOrderResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  submissionEventId: string;
+}
+
+export class PaymentOrderListResponseDto {
+  @ApiProperty({ type: () => PaymentOrderResponseDto, isArray: true })
+  items: PaymentOrderResponseDto[];
+
+  @ApiProperty({ minimum: 1 })
+  page: number;
+
+  @ApiProperty({ minimum: 1, maximum: 100 })
+  limit: number;
+
+  @ApiProperty({ minimum: 0 })
+  total: number;
+}

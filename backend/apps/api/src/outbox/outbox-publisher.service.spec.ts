@@ -1,4 +1,4 @@
-import { CONTENT_SUBMITTED_EVENT } from '@app/contracts';
+import { CONTENT_SUBMITTED_EVENT, PAYMENT_ORDER_CREATED_EVENT } from '@app/contracts';
 import type { PrismaService } from '@app/database';
 import { RABBITMQ_TOPOLOGY, type RabbitMqConnectionService } from '@app/messaging';
 import type { ChannelWrapper } from 'amqp-connection-manager';
@@ -194,6 +194,63 @@ describe('OutboxPublisherService', () => {
     await publishing;
 
     expect(harness.updateMany).toHaveBeenCalledOnce();
+  });
+
+  it('routes payment-order.created v1 to PayGrid and marks it published', async () => {
+    const event = createOutboxEvent({
+      eventType: PAYMENT_ORDER_CREATED_EVENT.type,
+      eventVersion: PAYMENT_ORDER_CREATED_EVENT.version,
+      aggregateType: 'PaymentOrder',
+      payload: { orderId: '206eb712-8f3d-48d9-b95f-27624bc4f738' },
+    });
+    const harness = createHarness([event]);
+    service = harness.service;
+    await service.onModuleInit();
+
+    await service.publishPendingBatch();
+
+    expect(harness.assertExchange).toHaveBeenCalledWith('paygrid.events', 'topic', {
+      durable: true,
+    });
+    expect(harness.assertQueue).toHaveBeenCalledWith('payment-orders.process.v1', {
+      durable: true,
+      exclusive: false,
+      autoDelete: false,
+    });
+    expect(harness.bindQueue).toHaveBeenCalledWith(
+      'payment-orders.process.v1',
+      'paygrid.events',
+      PAYMENT_ORDER_CREATED_EVENT.routingKey,
+    );
+    expect(harness.publish).toHaveBeenCalledWith(
+      'paygrid.events',
+      PAYMENT_ORDER_CREATED_EVENT.routingKey,
+      expect.any(String),
+      expect.objectContaining({ messageId: event.eventId }),
+    );
+    expect(harness.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ publishedAt: expect.any(Date) }) }),
+    );
+  });
+
+  it('does not publish an invalid payment-order.created payload', async () => {
+    const harness = createHarness([
+      createOutboxEvent({
+        eventType: PAYMENT_ORDER_CREATED_EVENT.type,
+        eventVersion: PAYMENT_ORDER_CREATED_EVENT.version,
+        aggregateType: 'PaymentOrder',
+        payload: { orderId: 'not-a-uuid' },
+      }),
+    ]);
+    service = harness.service;
+    await service.onModuleInit();
+
+    await service.publishPendingBatch();
+
+    expect(harness.publish).not.toHaveBeenCalled();
+    expect(harness.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ retryCount: { increment: 1 } }) }),
+    );
   });
 
   it('keeps failed events unpublished, backs off, and releases the claim', async () => {

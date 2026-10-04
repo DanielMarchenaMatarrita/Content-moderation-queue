@@ -7,8 +7,11 @@ import {
 } from '@nestjs/common';
 import {
   CONTENT_SUBMITTED_EVENT,
+  PAYMENT_ORDER_CREATED_EVENT,
   type ContentSubmittedEvent,
   type ContentSubmittedPayload,
+  type PaymentOrderCreatedEvent,
+  type PaymentOrderCreatedPayload,
 } from '@app/contracts';
 import { PrismaService } from '@app/database';
 import {
@@ -20,8 +23,9 @@ import type { OutboxEvent } from '../../../../generated/prisma/client.js';
 import { OUTBOX_PUBLISHER_CONFIG } from './outbox-publisher.constants.js';
 
 interface EventRoute {
+  exchangeName: string;
   routingKey: string;
-  payload: ContentSubmittedPayload;
+  payload: ContentSubmittedPayload | PaymentOrderCreatedPayload;
 }
 
 @Injectable()
@@ -41,6 +45,8 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
   async onModuleInit(): Promise<void> {
     const exchange = RABBITMQ_TOPOLOGY.eventsExchange;
     const destination = RABBITMQ_TOPOLOGY.contentSubmitted;
+    const paygrid = RABBITMQ_TOPOLOGY.paygrid;
+    const paymentOrder = paygrid.paymentOrderCreated;
 
     this.publisherChannel = this.rabbitMq.getConnection().createChannel({
       name: 'outbox-publisher',
@@ -59,6 +65,19 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
           destination.queueName,
           exchange.name,
           CONTENT_SUBMITTED_EVENT.routingKey,
+        );
+        await channel.assertExchange(paygrid.eventsExchange.name, paygrid.eventsExchange.type, {
+          durable: paygrid.eventsExchange.durable,
+        });
+        await channel.assertQueue(paymentOrder.queueName, {
+          durable: true,
+          exclusive: false,
+          autoDelete: false,
+        });
+        await channel.bindQueue(
+          paymentOrder.queueName,
+          paygrid.eventsExchange.name,
+          PAYMENT_ORDER_CREATED_EVENT.routingKey,
         );
       },
     });
@@ -130,7 +149,7 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
     }
 
     const route = this.resolveRoute(event);
-    const envelope: ContentSubmittedEvent = {
+    const envelope: ContentSubmittedEvent | PaymentOrderCreatedEvent = {
       eventId: event.eventId,
       eventType: event.eventType,
       eventVersion: event.eventVersion,
@@ -140,7 +159,7 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
     };
 
     await this.publisherChannel.publish(
-      RABBITMQ_TOPOLOGY.eventsExchange.name,
+      route.exchangeName,
       route.routingKey,
       JSON.stringify(envelope),
       {
@@ -169,24 +188,39 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
   }
 
   private resolveRoute(event: OutboxEvent): EventRoute {
-    if (event.eventType !== CONTENT_SUBMITTED_EVENT.type) {
-      throw new Error(`Unsupported event type: ${event.eventType}`);
+    if (event.eventType === CONTENT_SUBMITTED_EVENT.type) {
+      if (event.eventVersion !== CONTENT_SUBMITTED_EVENT.version) {
+        throw new Error(
+          `Unsupported ${CONTENT_SUBMITTED_EVENT.type} version: ${event.eventVersion}`,
+        );
+      }
+      if (!this.isContentSubmittedPayload(event.payload)) {
+        throw new Error(`Invalid ${CONTENT_SUBMITTED_EVENT.type} payload`);
+      }
+      return {
+        exchangeName: RABBITMQ_TOPOLOGY.eventsExchange.name,
+        routingKey: CONTENT_SUBMITTED_EVENT.routingKey,
+        payload: event.payload,
+      };
     }
 
-    if (event.eventVersion !== CONTENT_SUBMITTED_EVENT.version) {
-      throw new Error(
-        `Unsupported ${CONTENT_SUBMITTED_EVENT.type} version: ${event.eventVersion}`,
-      );
+    if (event.eventType === PAYMENT_ORDER_CREATED_EVENT.type) {
+      if (event.eventVersion !== PAYMENT_ORDER_CREATED_EVENT.version) {
+        throw new Error(
+          `Unsupported ${PAYMENT_ORDER_CREATED_EVENT.type} version: ${event.eventVersion}`,
+        );
+      }
+      if (!this.isPaymentOrderCreatedPayload(event.payload)) {
+        throw new Error(`Invalid ${PAYMENT_ORDER_CREATED_EVENT.type} payload`);
+      }
+      return {
+        exchangeName: RABBITMQ_TOPOLOGY.paygrid.eventsExchange.name,
+        routingKey: PAYMENT_ORDER_CREATED_EVENT.routingKey,
+        payload: event.payload,
+      };
     }
 
-    if (!this.isContentSubmittedPayload(event.payload)) {
-      throw new Error(`Invalid ${CONTENT_SUBMITTED_EVENT.type} payload`);
-    }
-
-    return {
-      routingKey: CONTENT_SUBMITTED_EVENT.routingKey,
-      payload: event.payload,
-    };
+    throw new Error(`Unsupported event type: ${event.eventType}`);
   }
 
   private isContentSubmittedPayload(
@@ -202,6 +236,23 @@ export class OutboxPublisherService implements OnModuleInit, OnModuleDestroy {
       typeof record.contentId === 'string' &&
       /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
         record.contentId,
+      )
+    );
+  }
+
+  private isPaymentOrderCreatedPayload(
+    payload: unknown,
+  ): payload is PaymentOrderCreatedPayload {
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      return false;
+    }
+
+    const record = payload as Record<string, unknown>;
+    return (
+      Object.keys(record).length === 1 &&
+      typeof record.orderId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        record.orderId,
       )
     );
   }
