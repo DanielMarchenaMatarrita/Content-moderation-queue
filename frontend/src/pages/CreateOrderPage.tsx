@@ -4,16 +4,16 @@ import { ArrowLeft } from '@phosphor-icons/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { createOrder, ordersQueryKeys } from '../features/orders/api';
 import { Button } from '../shared/components/Button';
-import { Field, Input, Select } from '../shared/components/FormControls';
+import { Field, Input } from '../shared/components/FormControls';
 import { PageHeader } from '../shared/components/PageHeader';
 import type { SimulationScenario } from '../shared/types/api';
 import { getErrorMessage } from '../shared/lib/format';
 
-const scenarios: Array<{ value: SimulationScenario; description: string }> = [
-  { value: 'SUCCESS', description: 'SUCCESS — completes on initial attempt.' },
-  { value: 'FAIL_ONCE', description: 'FAIL ONCE — first attempt fails, then retry succeeds.' },
-  { value: 'FAIL_TWICE', description: 'FAIL TWICE — first two attempts fail, then retry succeeds.' },
-  { value: 'ALWAYS_FAIL', description: 'ALWAYS FAIL — all attempts fail and retries exhaust.' },
+const scenarios: Array<{ value: SimulationScenario; label: string; description: string }> = [
+  { value: 'SUCCESS', label: 'SUCCESS', description: 'Initial processing is expected to succeed with zero retries.' },
+  { value: 'FAIL_ONCE', label: 'FAIL ONCE', description: 'Initial attempt is expected to fail; Retry 1 is expected to succeed.' },
+  { value: 'FAIL_TWICE', label: 'FAIL TWICE', description: 'Initial attempt and Retry 1 are expected to fail; Retry 2 is expected to succeed.' },
+  { value: 'ALWAYS_FAIL', label: 'ALWAYS FAIL', description: 'All attempts are expected to fail; Retry 3 exhausts retry capacity and the order reaches FAILED.' },
 ];
 
 export function CreateOrderPage() {
@@ -37,7 +37,18 @@ export function CreateOrderPage() {
     <form className="form-card" onSubmit={submit} noValidate>
       <Field label="Amount" htmlFor="order-amount" hint="Whole number, minimum 1." error={error?.startsWith('Amount') ? error : undefined}><Input id="order-amount" type="number" min="1" step="1" required value={amount} disabled={mutation.isPending} onChange={(event) => setAmount(event.target.value)} aria-describedby={error?.startsWith('Amount') ? 'order-amount-error' : 'order-amount-hint'} aria-invalid={Boolean(error?.startsWith('Amount'))} /></Field>
       <Field label="Currency" htmlFor="order-currency" hint="Three uppercase letters." error={error?.startsWith('Currency') ? error : undefined}><Input id="order-currency" required maxLength={3} value={currency} disabled={mutation.isPending} onChange={(event) => setCurrency(event.target.value.toUpperCase())} aria-describedby={error?.startsWith('Currency') ? 'order-currency-error' : 'order-currency-hint'} aria-invalid={Boolean(error?.startsWith('Currency'))} /></Field>
-      <Field label="Scenario" htmlFor="order-scenario" hint="Simulation behavior used by the order processor."><Select id="order-scenario" value={simulationScenario} disabled={mutation.isPending} onChange={(event) => setScenario(event.target.value as SimulationScenario)} aria-describedby="order-scenario-hint">{scenarios.map((scenario) => <option key={scenario.value} value={scenario.value}>{scenario.description}</option>)}</Select></Field>
+      <fieldset className="scenario-fieldset" disabled={mutation.isPending} aria-describedby="order-scenario-hint">
+        <legend>Scenario</legend>
+        <p id="order-scenario-hint" className="field-hint">Choose deterministic processing behavior before creating the order.</p>
+        <div className="scenario-card-grid">
+          {scenarios.map((scenario) => (
+            <label key={scenario.value} className={`scenario-card${simulationScenario === scenario.value ? ' scenario-card-selected' : ''}`}>
+              <input type="radio" name="simulationScenario" value={scenario.value} checked={simulationScenario === scenario.value} onChange={() => setScenario(scenario.value)} />
+              <span><strong>{scenario.label}</strong><span>{scenario.description}</span></span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       {mutation.isError ? <div className="inline-alert inline-alert-error" role="alert">{getErrorMessage(mutation.error)}</div> : null}
       <div className="form-actions"><Link className="button button-secondary" to="/orders">Cancel</Link><Button type="submit" loading={mutation.isPending}>{mutation.isPending ? 'Creating' : 'Create order'}</Button></div>
     </form>
