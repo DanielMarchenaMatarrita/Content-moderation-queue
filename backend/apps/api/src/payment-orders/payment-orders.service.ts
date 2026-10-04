@@ -21,6 +21,23 @@ const paymentOrderSelect = {
   updatedAt: true,
 } satisfies Prisma.PaymentOrderSelect;
 
+const processingAttemptSelect = {
+  id: true,
+  orderId: true,
+  attemptNumber: true,
+  status: true,
+  errorDescription: true,
+  createdAt: true,
+} satisfies Prisma.ProcessingAttemptSelect;
+
+const paymentOrderDetailSelect = {
+  ...paymentOrderSelect,
+  attempts: {
+    orderBy: { attemptNumber: 'asc' },
+    select: processingAttemptSelect,
+  },
+} satisfies Prisma.PaymentOrderSelect;
+
 @Injectable()
 export class PaymentOrdersService {
   constructor(private readonly prisma: PrismaService) {}
@@ -81,11 +98,52 @@ export class PaymentOrdersService {
   async findOne(id: string) {
     const order = await this.prisma.paymentOrder.findUnique({
       where: { id },
-      select: paymentOrderSelect,
+      select: paymentOrderDetailSelect,
     });
     if (!order) {
       throw new NotFoundException(`Payment order ${id} was not found`);
     }
     return order;
+  }
+
+  async findAttempts(id: string) {
+    await this.assertOrderExists(id);
+
+    return this.prisma.processingAttempt.findMany({
+      where: { orderId: id },
+      orderBy: { attemptNumber: 'asc' },
+      select: processingAttemptSelect,
+    });
+  }
+
+  async getStats() {
+    const [total, pending, successful, failed, retried, totalAttempts] =
+      await Promise.all([
+        this.prisma.paymentOrder.count(),
+        this.prisma.paymentOrder.count({
+          where: { status: PaymentOrderStatus.PENDING },
+        }),
+        this.prisma.paymentOrder.count({
+          where: { status: PaymentOrderStatus.SUCCESS },
+        }),
+        this.prisma.paymentOrder.count({
+          where: { status: PaymentOrderStatus.FAILED },
+        }),
+        this.prisma.paymentOrder.count({ where: { retryCount: { gt: 0 } } }),
+        this.prisma.processingAttempt.count(),
+      ]);
+
+    return { total, pending, successful, failed, retried, totalAttempts };
+  }
+
+  private async assertOrderExists(id: string) {
+    const order = await this.prisma.paymentOrder.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!order) {
+      throw new NotFoundException(`Payment order ${id} was not found`);
+    }
   }
 }

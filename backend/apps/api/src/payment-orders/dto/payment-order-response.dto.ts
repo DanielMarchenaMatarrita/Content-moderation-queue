@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import {
   PaymentOrderStatus,
+  ProcessingAttemptStatus,
   SimulationScenario,
 } from '../../../../../generated/prisma/client.js';
 
@@ -36,6 +37,51 @@ export class PaymentOrderResponseDto {
 export class CreatedPaymentOrderResponseDto extends PaymentOrderResponseDto {
   @ApiProperty({ format: 'uuid' })
   submissionEventId: string;
+}
+
+export class ProcessingAttemptResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  id: string;
+
+  @ApiProperty({ format: 'uuid' })
+  orderId: string;
+
+  @ApiProperty({ minimum: 1 })
+  attemptNumber: number;
+
+  @ApiProperty({ enum: ProcessingAttemptStatus })
+  status: (typeof ProcessingAttemptStatus)[keyof typeof ProcessingAttemptStatus];
+
+  @ApiProperty({ nullable: true })
+  errorDescription: string | null;
+
+  @ApiProperty({ format: 'date-time' })
+  createdAt: Date;
+}
+
+export class PaymentOrderDetailResponseDto extends PaymentOrderResponseDto {
+  @ApiProperty({ type: () => ProcessingAttemptResponseDto, isArray: true })
+  attempts: ProcessingAttemptResponseDto[];
+}
+
+export class PaymentOrderStatsResponseDto {
+  @ApiProperty({ minimum: 0 })
+  total: number;
+
+  @ApiProperty({ minimum: 0 })
+  pending: number;
+
+  @ApiProperty({ minimum: 0 })
+  successful: number;
+
+  @ApiProperty({ minimum: 0 })
+  failed: number;
+
+  @ApiProperty({ minimum: 0 })
+  retried: number;
+
+  @ApiProperty({ minimum: 0 })
+  totalAttempts: number;
 }
 
 export class PaymentOrderListResponseDto {
