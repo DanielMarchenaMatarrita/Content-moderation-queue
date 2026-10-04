@@ -35,6 +35,25 @@ enum ModerationSource {
   ADMIN
 }
 
+enum PaymentOrderStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum SimulationScenario {
+  SUCCESS
+  FAIL_ONCE
+  FAIL_TWICE
+  ALWAYS_FAIL
+}
+
+enum ProcessingAttemptStatus {
+  SUCCESS
+  ERROR
+}
+
 model User {
   id           String   @id @default(uuid()) @db.Uuid
   email        String   @unique @db.VarChar(320)
@@ -130,4 +149,33 @@ model OutboxEvent {
   createdAt DateTime @default(now()) @db.Timestamptz(3)
 
   @@index([publishedAt, nextAttemptAt, createdAt(sort: Asc)])
+}
+
+model PaymentOrder {
+  id                 String             @id @default(uuid()) @db.Uuid
+  amount             Int
+  currency           String             @db.VarChar(3)
+  status             PaymentOrderStatus @default(PENDING)
+  simulationScenario SimulationScenario
+  retryCount         Int                @default(0)
+  lastError          String?            @db.Text
+  createdAt          DateTime           @default(now()) @db.Timestamptz(3)
+  updatedAt          DateTime           @updatedAt @db.Timestamptz(3)
+
+  attempts ProcessingAttempt[]
+
+  @@index([status, createdAt(sort: Desc)])
+}
+
+model ProcessingAttempt {
+  id               String                  @id @default(uuid()) @db.Uuid
+  orderId          String                  @db.Uuid
+  attemptNumber    Int
+  status           ProcessingAttemptStatus
+  errorDescription String?                 @db.Text
+  createdAt        DateTime                @default(now()) @db.Timestamptz(3)
+
+  order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, attemptNumber])
 }

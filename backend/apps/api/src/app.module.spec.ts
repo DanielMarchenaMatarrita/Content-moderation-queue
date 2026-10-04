@@ -4,6 +4,7 @@ import { ContentModule } from './content/content.module.js';
 import { InternalDiagnosticsModule } from './internal/internal-diagnostics.module.js';
 import { ModerationReadModule } from './moderation-read/moderation-read.module.js';
 import { OutboxPublisherModule } from './outbox/outbox-publisher.module.js';
+import { PaymentOrdersModule } from './payment-orders/payment-orders.module.js';
 import { UsersModule } from './users/users.module.js';
 
 describe('AppModule', () => {
@@ -14,6 +15,7 @@ describe('AppModule', () => {
       UsersModule,
       ModerationReadModule,
       InternalDiagnosticsModule,
+      PaymentOrdersModule,
       OutboxPublisherModule,
     ]);
   });
