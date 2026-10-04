@@ -177,5 +177,6 @@ model ProcessingAttempt {
 
   order PaymentOrder @relation(fields: [orderId], references: [id], onDelete: Restrict)
 
+  @@unique([orderId, attemptNumber])
   @@index([orderId, attemptNumber])
 }

@@ -50,6 +50,9 @@
     },
     {
       "path": "./apps/moderation-worker/tsconfig.app.json"
+    },
+    {
+      "path": "./apps/order-processor/tsconfig.app.json"
     }
   ]
 }
