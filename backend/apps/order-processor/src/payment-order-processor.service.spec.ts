@@ -1,10 +1,14 @@
 import type { PrismaService } from '@app/database';
 import { PaymentOrderProcessorService } from './payment-order-processor.service.js';
 
-function harness(scenario: string) {
-  const processingAttempt = { upsert: vi.fn().mockResolvedValue(undefined) };
+function harness(scenario: string, reprocessScenario: string | null = null) {
+  const processingAttempt = {
+    upsert: vi.fn().mockResolvedValue(undefined),
+    create: vi.fn().mockResolvedValue(undefined),
+    findFirst: vi.fn().mockResolvedValue({ attemptNumber: 4 }),
+  };
   const paymentOrder = {
-    findUnique: vi.fn().mockResolvedValue({ simulationScenario: scenario }),
+    findUnique: vi.fn().mockResolvedValue({ simulationScenario: scenario, reprocessScenario, retryCount: 0 }),
     update: vi.fn().mockResolvedValue(undefined),
   };
   const processedMessage = {
@@ -14,6 +18,7 @@ function harness(scenario: string) {
   const tx = { processingAttempt, paymentOrder, processedMessage };
   const prisma = {
     paymentOrder,
+    processingAttempt,
     processedMessage,
     $transaction: vi.fn(async (callback) => callback(tx)),
   } as unknown as PrismaService;
@@ -113,6 +118,47 @@ describe('PaymentOrderProcessorService', () => {
       'duplicate',
     );
     expect(h.processingAttempt.upsert).not.toHaveBeenCalled();
+    expect(h.paymentOrder.update).not.toHaveBeenCalled();
+  });
+  it('uses recovery scenario, appends attempt 5, and does not mutate original scenario', async () => {
+    const h = harness('ALWAYS_FAIL', 'SUCCESS');
+    await expect(h.service.process(eventId, orderId, 0)).resolves.toBe('processed');
+    expect(h.processingAttempt.findFirst).toHaveBeenCalledWith({
+      where: { orderId }, orderBy: { attemptNumber: 'desc' }, select: { attemptNumber: true },
+    });
+    expect(h.processingAttempt.create).toHaveBeenCalledWith({
+      data: { orderId, attemptNumber: 5, status: 'SUCCESS', errorDescription: null },
+    });
+    expect(h.processingAttempt.upsert).not.toHaveBeenCalled();
+    expect(h.paymentOrder.update).toHaveBeenCalledWith({
+      where: { id: orderId }, data: { status: 'SUCCESS', retryCount: 0, lastError: null },
+    });
+  });
+  it('treats stale original exhausted delivery as duplicate after recovery reset', async () => {
+    const h = harness('ALWAYS_FAIL', 'SUCCESS');
+    await expect(h.service.process(eventId, orderId, 3)).resolves.toBe('duplicate');
+    expect(h.processingAttempt.create).not.toHaveBeenCalled();
+    expect(h.paymentOrder.update).not.toHaveBeenCalled();
+  });
+  it('idempotently ACKs duplicate delivery of a successful recovery event', async () => {
+    const h = harness('ALWAYS_FAIL', 'SUCCESS');
+    h.processedMessage.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({ id: 'recovery-marker' });
+    await expect(h.service.process(eventId, orderId, 0)).resolves.toBe('processed');
+    await expect(h.service.process(eventId, orderId, 0)).resolves.toBe('duplicate');
+    expect(h.processingAttempt.create).toHaveBeenCalledOnce();
+    expect(h.paymentOrder.update).toHaveBeenCalledOnce();
+  });
+  it('treats recovery attempt uniqueness conflict as duplicate without retrying it', async () => {
+    const h = harness('ALWAYS_FAIL', 'ALWAYS_FAIL');
+    h.processingAttempt.create.mockRejectedValueOnce(
+      Object.assign(new Error('duplicate attempt'), {
+        code: 'P2002',
+        meta: { target: ['orderId', 'attemptNumber'] },
+      }),
+    );
+    await expect(h.service.process(eventId, orderId, 0)).resolves.toBe('duplicate');
     expect(h.paymentOrder.update).not.toHaveBeenCalled();
   });
 });

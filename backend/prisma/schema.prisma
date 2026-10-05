@@ -157,6 +157,7 @@ model PaymentOrder {
   currency           String             @db.VarChar(3)
   status             PaymentOrderStatus @default(PENDING)
   simulationScenario SimulationScenario
+  reprocessScenario  SimulationScenario?
   retryCount         Int                @default(0)
   lastError          String?            @db.Text
   createdAt          DateTime           @default(now()) @db.Timestamptz(3)

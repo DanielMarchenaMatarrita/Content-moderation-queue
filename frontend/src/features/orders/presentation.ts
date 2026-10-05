@@ -24,6 +24,15 @@ export function expectedAttemptCount(scenario: PaymentOrderDetail['simulationSce
   return scenario === 'SUCCESS' ? 1 : scenario === 'FAIL_ONCE' ? 2 : scenario === 'FAIL_TWICE' ? 3 : 4;
 }
 
+export function orderAttemptLabel(order: PaymentOrderDetail, number: number): string {
+  if (order.reprocessScenario && number > expectedAttemptCount(order.simulationScenario)) {
+    return number === expectedAttemptCount(order.simulationScenario) + 1
+      ? 'Manual reprocess'
+      : `Manual reprocess attempt ${number - expectedAttemptCount(order.simulationScenario)}`;
+  }
+  return attemptLabel(number);
+}
+
 function attemptStep(attempt: ProcessingAttempt | undefined, number: number, currentNumber: number | null): JourneyStep {
   if (attempt) return { key: `attempt-${number}`, label: attemptLabel(number), detail: `Attempt ${number} · ${attempt.status.toLowerCase()}`, state: attempt.status === 'SUCCESS' ? 'completed' : 'failed', category: 'persisted' };
   return { key: `attempt-${number}`, label: attemptLabel(number), detail: currentNumber === number ? 'Current processing step' : 'Not recorded', state: currentNumber === number ? 'current' : 'unknown', category: 'derived' };
@@ -32,6 +41,21 @@ function attemptStep(attempt: ProcessingAttempt | undefined, number: number, cur
 export function deriveJourney(order: PaymentOrderDetail): JourneyStep[] {
   const attemptsByNumber = new Map(order.attempts.map((attempt) => [attempt.attemptNumber, attempt]));
   const expectedCount = expectedAttemptCount(order.simulationScenario);
+  const recoveryAttempts = order.reprocessScenario
+    ? order.attempts.filter((attempt) => attempt.attemptNumber > expectedCount)
+    : [];
+  if (order.reprocessScenario && recoveryAttempts.length > 0) {
+    const originalAttempts = order.attempts.filter((attempt) => attempt.attemptNumber <= expectedCount);
+    const originalFailed = originalAttempts.some((attempt) => attempt.status === 'ERROR');
+    const steps: JourneyStep[] = [{ key: 'created', label: 'Created', detail: 'Persisted order created', state: 'completed', category: 'persisted' }, {
+      key: 'original-outcome', label: 'Original outcome', detail: originalFailed ? 'FAILED' : 'Original outcome not fully recorded', state: originalFailed ? 'terminal-failed' : 'unknown', category: originalFailed ? 'persisted' : 'derived',
+    }];
+    recoveryAttempts.forEach((attempt, index) => {
+      steps.push({ key: `reprocess-${attempt.id}`, label: index === 0 ? 'Manual reprocess' : `Manual reprocess attempt ${index + 1}`, detail: attempt.status, state: attempt.status === 'SUCCESS' ? 'completed' : 'failed', category: 'persisted' });
+    });
+    steps.push({ key: 'recovered-outcome', label: 'Recovered outcome', detail: order.status === 'SUCCESS' ? 'SUCCESS' : 'Recovery outcome not recorded', state: order.status === 'SUCCESS' ? 'terminal-success' : 'unknown', category: order.status === 'SUCCESS' ? 'persisted' : 'derived' });
+    return steps;
+  }
   const recordedNumbers = [...attemptsByNumber.keys()];
   const highestRecorded = recordedNumbers.length ? Math.max(...recordedNumbers) : 0;
   const hasSuccessfulAttempt = order.attempts.some((attempt) => attempt.status === 'SUCCESS');
@@ -46,6 +70,7 @@ export function deriveJourney(order: PaymentOrderDetail): JourneyStep[] {
 }
 
 export function processingOutcome(order: PaymentOrderDetail): string {
+  if (order.reprocessScenario && order.status === 'SUCCESS') return 'Recovered by manual reprocess';
   if (order.status === 'SUCCESS') return order.retryCount > 0 ? `Succeeded after ${order.retryCount} ${order.retryCount === 1 ? 'retry' : 'retries'}` : 'Succeeded on initial attempt';
   if (order.status === 'FAILED') return `Failed after ${order.retryCount} ${order.retryCount === 1 ? 'retry' : 'retries'}`;
   return 'Processing outcome pending';

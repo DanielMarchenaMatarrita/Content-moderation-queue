@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { PAYMENT_ORDER_CREATED_EVENT } from '@app/contracts';
 import type { PrismaService } from '@app/database';
 import {
@@ -16,6 +16,7 @@ const order = {
   currency: 'USD',
   status: PaymentOrderStatus.PENDING,
   simulationScenario: SimulationScenario.FAIL_ONCE,
+  reprocessScenario: null,
   retryCount: 0,
   lastError: null,
   createdAt,
@@ -40,7 +41,13 @@ const secondAttempt = {
 
 function createHarness() {
   const transaction = {
-    paymentOrder: { create: vi.fn().mockResolvedValue(order) },
+    paymentOrder: {
+      create: vi.fn().mockResolvedValue(order),
+      findUnique: vi.fn(),
+      findUniqueOrThrow: vi.fn().mockResolvedValue(order),
+      update: vi.fn().mockResolvedValue(order),
+      updateMany: vi.fn().mockResolvedValue({ count: 1 }),
+    },
     outboxEvent: { create: vi.fn().mockResolvedValue({}) },
   };
   const paymentOrder = {
@@ -125,6 +132,64 @@ describe('PaymentOrdersService', () => {
       ...order,
       submissionEventId: expect.stringMatching(/^[0-9a-f-]{36}$/i),
     });
+  });
+
+  it('atomically reprocesses only a failed order with a new event and preserved original scenario', async () => {
+    const harness = createHarness();
+    const failedOrder = { ...order, status: PaymentOrderStatus.FAILED, retryCount: 3, lastError: 'failed' };
+    const reprocessed = { ...failedOrder, status: PaymentOrderStatus.PENDING, reprocessScenario: SimulationScenario.SUCCESS, retryCount: 0, lastError: null };
+    harness.transaction.paymentOrder.findUniqueOrThrow.mockResolvedValueOnce(reprocessed);
+
+    const result = await harness.service.reprocess(orderId, { scenario: SimulationScenario.SUCCESS });
+
+    expect(harness.$transaction).toHaveBeenCalledOnce();
+    expect(harness.transaction.paymentOrder.updateMany).toHaveBeenCalledWith({
+      where: { id: orderId, status: PaymentOrderStatus.FAILED },
+      data: { status: PaymentOrderStatus.PENDING, reprocessScenario: SimulationScenario.SUCCESS, retryCount: 0, lastError: null },
+    });
+    expect(harness.transaction.outboxEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        eventId: result.reprocessEventId,
+        eventType: PAYMENT_ORDER_CREATED_EVENT.type,
+        aggregateId: orderId,
+        payload: { orderId },
+      }),
+    });
+    expect(reprocessed.simulationScenario).toBe(SimulationScenario.FAIL_ONCE);
+    expect(result.reprocessEventId).toMatch(/^[0-9a-f-]{36}$/i);
+  });
+
+  it('rejects absent and non-failed reprocess requests without writes', async () => {
+    const absent = createHarness();
+    absent.transaction.paymentOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+    absent.transaction.paymentOrder.findUnique.mockResolvedValueOnce(null);
+    await expect(absent.service.reprocess(orderId, { scenario: SimulationScenario.SUCCESS })).rejects.toBeInstanceOf(NotFoundException);
+    expect(absent.transaction.paymentOrder.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(absent.transaction.outboxEvent.create).not.toHaveBeenCalled();
+
+    const pending = createHarness();
+    pending.transaction.paymentOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+    pending.transaction.paymentOrder.findUnique.mockResolvedValueOnce({ id: orderId });
+    await expect(pending.service.reprocess(orderId, { scenario: SimulationScenario.SUCCESS })).rejects.toBeInstanceOf(ConflictException);
+    expect(pending.transaction.paymentOrder.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(pending.transaction.outboxEvent.create).not.toHaveBeenCalled();
+  });
+
+  it('does not create another recovery event when conditional failed transition loses a race', async () => {
+    const harness = createHarness();
+    harness.transaction.paymentOrder.updateMany.mockResolvedValueOnce({ count: 0 });
+    harness.transaction.paymentOrder.findUnique.mockResolvedValueOnce({ id: orderId });
+
+    await expect(
+      harness.service.reprocess(orderId, { scenario: SimulationScenario.SUCCESS }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(harness.transaction.paymentOrder.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: orderId, status: PaymentOrderStatus.FAILED },
+      }),
+    );
+    expect(harness.transaction.paymentOrder.findUniqueOrThrow).not.toHaveBeenCalled();
+    expect(harness.transaction.outboxEvent.create).not.toHaveBeenCalled();
   });
 
   it('paginates newest-first orders with an optional status filter', async () => {

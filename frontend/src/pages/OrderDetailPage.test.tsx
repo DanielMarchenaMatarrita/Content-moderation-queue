@@ -11,7 +11,7 @@ const timestamp = '2026-01-01T00:00:00.000Z';
 const attempt = (attemptNumber: number, status: 'SUCCESS' | 'ERROR', errorDescription: string | null = status === 'ERROR' ? 'Gateway timeout' : null) => ({ id: `attempt-${attemptNumber}`, orderId: id, attemptNumber, status, errorDescription, createdAt: timestamp });
 
 function order(scenario: SimulationScenario, status: PaymentOrderDetail['status'], attempts: PaymentOrderDetail['attempts']): PaymentOrderDetail {
-  return { id, amount: 15000, currency: 'CRC', simulationScenario: scenario, status, retryCount: Math.max(0, attempts.length - 1), lastError: [...attempts].reverse().find((value) => value.status === 'ERROR')?.errorDescription ?? null, createdAt: timestamp, updatedAt: timestamp, attempts };
+  return { id, amount: 15000, currency: 'CRC', simulationScenario: scenario, reprocessScenario: null, status, retryCount: Math.max(0, attempts.length - 1), lastError: [...attempts].reverse().find((value) => value.status === 'ERROR')?.errorDescription ?? null, createdAt: timestamp, updatedAt: timestamp, attempts };
 }
 
 function renderDetail(data: PaymentOrderDetail) {
@@ -124,6 +124,77 @@ describe('OrderDetailPage', () => {
     expect(await screen.findByText(otherId)).toBeInTheDocument();
     expect(screen.queryByText('Initial attempt recorded')).not.toBeInTheDocument();
     expect(screen.queryByText('Retry 1 recorded')).not.toBeInTheDocument();
+    expect(screen.queryByText('Order success')).not.toBeInTheDocument();
+  });
+
+  it('shows failed-only manual reprocess, refetches pending acceptance, then polls recovered success', async () => {
+    vi.useFakeTimers();
+    try {
+    const failed = order('ALWAYS_FAIL', 'FAILED', [attempt(1, 'ERROR'), attempt(2, 'ERROR'), attempt(3, 'ERROR'), attempt(4, 'ERROR')]);
+    const pending: PaymentOrderDetail = { ...failed, status: 'PENDING', reprocessScenario: 'SUCCESS' };
+    const recovered: PaymentOrderDetail = {
+      ...pending,
+      status: 'SUCCESS',
+      attempts: [...pending.attempts, attempt(5, 'SUCCESS')],
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(failed), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ ...pending, reprocessEventId: 'event-5' }), { status: 201, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(pending), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(recovered), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ToastProvider><MemoryRouter initialEntries={[`/orders/${id}`]}><Routes><Route path="/orders/:id" element={<OrderDetailPage />} /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>);
+    await vi.waitFor(() => expect(screen.getByRole('button', { name: 'Reprocess order' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Reprocess order' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Reprocess order' }));
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    expect(fetchMock.mock.calls[1][0]).toBe(`/api/payment-orders/${id}/reprocess`);
+    expect(fetchMock.mock.calls[1][1]).toEqual(expect.objectContaining({ method: 'POST', body: JSON.stringify({ scenario: 'SUCCESS' }) }));
+    expect(screen.getByRole('status')).toHaveTextContent('Auto-refresh is active while this order is pending');
+    await act(async () => { await vi.advanceTimersByTimeAsync(1_500); });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(screen.getByText('Recovery scenario')).toBeInTheDocument();
+    expect(screen.getAllByText('Manual reprocess').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Retry 4')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Reprocess order' })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps failed order displayed and exposes reprocess API errors', async () => {
+    const failed = order('ALWAYS_FAIL', 'FAILED', [attempt(1, 'ERROR'), attempt(2, 'ERROR'), attempt(3, 'ERROR'), attempt(4, 'ERROR')]);
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(failed), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: 'Order cannot be reprocessed' }), { status: 409, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(<QueryClientProvider client={client}><ToastProvider><MemoryRouter initialEntries={[`/orders/${id}`]}><Routes><Route path="/orders/:id" element={<OrderDetailPage />} /></Routes></MemoryRouter></ToastProvider></QueryClientProvider>);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reprocess order' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Order cannot be reprocessed');
+    expect(screen.getByText('Retry limit exhausted after 3 retries')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Reprocess order' })).toBeInTheDocument();
+  });
+
+  it('labels newly observed recovery attempt as manual reprocess without replaying terminal history', async () => {
+    const failed = order('ALWAYS_FAIL', 'FAILED', [attempt(1, 'ERROR'), attempt(2, 'ERROR'), attempt(3, 'ERROR'), attempt(4, 'ERROR')]);
+    const client = renderDetail(failed);
+    await screen.findByRole('heading', { name: 'Processing journey' });
+    const recovered: PaymentOrderDetail = { ...failed, status: 'SUCCESS', reprocessScenario: 'SUCCESS', attempts: [...failed.attempts, attempt(5, 'SUCCESS')] };
+    act(() => client.setQueryData(['orders', 'detail', id], recovered));
+    expect(await screen.findByText('Manual reprocess recorded')).toBeInTheDocument();
+    expect(screen.queryByText('Retry 4 recorded')).not.toBeInTheDocument();
+  });
+
+  it('does not replay notifications for an initially loaded recovered terminal order', async () => {
+    const recovered: PaymentOrderDetail = {
+      ...order('ALWAYS_FAIL', 'SUCCESS', [attempt(1, 'ERROR'), attempt(2, 'ERROR'), attempt(3, 'ERROR'), attempt(4, 'ERROR'), attempt(5, 'SUCCESS')]),
+      reprocessScenario: 'SUCCESS',
+    };
+    renderDetail(recovered);
+    expect(await screen.findByText('Recovered outcome')).toBeInTheDocument();
+    expect(screen.queryByText('Manual reprocess recorded')).not.toBeInTheDocument();
     expect(screen.queryByText('Order success')).not.toBeInTheDocument();
   });
 });

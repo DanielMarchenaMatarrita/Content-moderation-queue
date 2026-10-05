@@ -21,6 +21,9 @@ export class PaymentOrderResponseDto {
   @ApiProperty({ enum: SimulationScenario })
   simulationScenario: (typeof SimulationScenario)[keyof typeof SimulationScenario];
 
+  @ApiProperty({ enum: SimulationScenario, nullable: true })
+  reprocessScenario: (typeof SimulationScenario)[keyof typeof SimulationScenario] | null;
+
   @ApiProperty({ minimum: 0 })
   retryCount: number;
 
@@ -37,6 +40,11 @@ export class PaymentOrderResponseDto {
 export class CreatedPaymentOrderResponseDto extends PaymentOrderResponseDto {
   @ApiProperty({ format: 'uuid' })
   submissionEventId: string;
+}
+
+export class ReprocessedPaymentOrderResponseDto extends PaymentOrderResponseDto {
+  @ApiProperty({ format: 'uuid' })
+  reprocessEventId: string;
 }
 
 export class ProcessingAttemptResponseDto {

@@ -80,6 +80,15 @@ export interface ProcessingAttempt {
 
 export interface PaymentOrderDetail extends PaymentOrder {
   attempts: ProcessingAttempt[];
+  reprocessScenario: SimulationScenario | null;
+}
+
+export interface ReprocessPaymentOrderInput {
+  scenario: SimulationScenario;
+}
+
+export interface ReprocessedPaymentOrder extends PaymentOrder {
+  reprocessEventId: string;
 }
 
 export interface CreatePaymentOrderInput {

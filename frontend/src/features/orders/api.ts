@@ -7,6 +7,8 @@ import type {
   PaymentOrderDetail,
   PaymentOrderStats,
   PaymentOrderStatus,
+  ReprocessPaymentOrderInput,
+  ReprocessedPaymentOrder,
 } from '../../shared/types/api';
 
 export interface ListOrdersParams {
@@ -42,4 +44,8 @@ export function getOrderStats(): Promise<PaymentOrderStats> {
 
 export function createOrder(input: CreatePaymentOrderInput): Promise<CreatedPaymentOrder> {
   return apiRequest('/orders', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function reprocessOrder(id: string, input: ReprocessPaymentOrderInput): Promise<ReprocessedPaymentOrder> {
+  return apiRequest(`/payment-orders/${encodeURIComponent(id)}/reprocess`, { method: 'POST', body: JSON.stringify(input) });
 }

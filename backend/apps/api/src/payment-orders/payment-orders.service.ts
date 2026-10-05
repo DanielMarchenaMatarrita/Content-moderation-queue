@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PAYMENT_ORDER_CREATED_EVENT } from '@app/contracts';
 import { PrismaService } from '@app/database';
 import {
@@ -8,6 +8,7 @@ import {
 } from '../../../../generated/prisma/client.js';
 import type { CreatePaymentOrderDto } from './dto/create-payment-order.dto.js';
 import type { ListPaymentOrdersQueryDto } from './dto/list-payment-orders-query.dto.js';
+import type { ReprocessPaymentOrderDto } from './dto/reprocess-payment-order.dto.js';
 
 const paymentOrderSelect = {
   id: true,
@@ -15,6 +16,7 @@ const paymentOrderSelect = {
   currency: true,
   status: true,
   simulationScenario: true,
+  reprocessScenario: true,
   retryCount: true,
   lastError: true,
   createdAt: true,
@@ -76,6 +78,53 @@ export class PaymentOrdersService {
       });
 
       return { ...order, submissionEventId: eventId };
+    });
+  }
+
+  async reprocess(id: string, input: ReprocessPaymentOrderDto) {
+    const eventId = randomUUID();
+    const correlationId = randomUUID();
+    const occurredAt = new Date();
+
+    return this.prisma.$transaction(async (transaction) => {
+      const transition = await transaction.paymentOrder.updateMany({
+        where: { id, status: PaymentOrderStatus.FAILED },
+        data: {
+          status: PaymentOrderStatus.PENDING,
+          reprocessScenario: input.scenario,
+          retryCount: 0,
+          lastError: null,
+        },
+      });
+      if (transition.count === 0) {
+        const current = await transaction.paymentOrder.findUnique({
+          where: { id },
+          select: { id: true },
+        });
+        if (!current)
+          throw new NotFoundException(`Payment order ${id} was not found`);
+        throw new ConflictException(
+          `Payment order ${id} can only be reprocessed from FAILED`,
+        );
+      }
+      const order = await transaction.paymentOrder.findUniqueOrThrow({
+        where: { id },
+        select: paymentOrderSelect,
+      });
+      await transaction.outboxEvent.create({
+        data: {
+          eventId,
+          eventType: PAYMENT_ORDER_CREATED_EVENT.type,
+          eventVersion: PAYMENT_ORDER_CREATED_EVENT.version,
+          aggregateType: 'PaymentOrder',
+          aggregateId: order.id,
+          payload: { orderId: order.id },
+          correlationId,
+          occurredAt,
+          createdAt: occurredAt,
+        },
+      });
+      return { ...order, reprocessEventId: eventId };
     });
   }
 
