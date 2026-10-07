@@ -51,14 +51,14 @@ export async function apiRequest<T>(
       headers,
     });
   } catch {
-    throw new ApiError('Unable to reach the CMQ API.', 0);
+    throw new ApiError('Unable to reach the PayGrid API.', 0);
   }
 
   if (!response.ok) {
     const details = await readErrorPayload(response);
     const fallback =
       response.status >= 500
-        ? 'The CMQ API returned a server error. Try again.'
+        ? 'The PayGrid API returned a server error. Try again.'
         : response.status === 404
           ? 'The requested record was not found.'
           : response.status === 409

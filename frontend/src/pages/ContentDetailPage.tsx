@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   ArrowClockwise,
   ArrowLeft,
+  ArrowRight,
   CheckCircle,
   ClockCountdown,
   Database,
@@ -20,6 +21,7 @@ import {
   moderationQueryKeys,
 } from '../features/moderation/api';
 import { Button } from '../shared/components/Button';
+import { ConceptTip } from '../shared/components/ConceptTip';
 import { EmptyState, ErrorState, LoadingState } from '../shared/components/DataStates';
 import { JsonView } from '../shared/components/JsonView';
 import { PageHeader } from '../shared/components/PageHeader';
@@ -130,6 +132,11 @@ export function ContentDetailPage() {
         </div>
       ) : null}
 
+      <ConceptTip
+        title="Consistencia eventual"
+        description="El contenido puede comenzar como PENDING y posteriormente el Worker persiste su decisión definitiva."
+      />
+
       <section className="detail-card" aria-labelledby="journey-title">
         <div className="section-heading"><div><h3 id="journey-title">Processing journey</h3><p>Architectural explanation. Nodes do not represent live step telemetry.</p></div><span className="live-disclaimer">Explanatory</span></div>
         <ol className="processing-journey">
@@ -141,9 +148,34 @@ export function ContentDetailPage() {
         <div className="known-state"><strong>Known state</strong><span>Content API reports <code>{content.status}</code>{latestResult ? ` with decision ${latestResult.decision}` : ' with no moderation result returned yet'}.</span></div>
       </section>
 
+      <ConceptTip
+        title="Recorrido arquitectónico"
+        description="Explicación conceptual del recorrido; no representa observabilidad en tiempo real."
+      >
+        <div className="architecture-flow" aria-label="API, Outbox, Publisher, RabbitMQ, Worker, Resultado">
+          <span>API</span><ArrowRight size={14} aria-hidden="true" />
+          <span>Outbox</span><ArrowRight size={14} aria-hidden="true" />
+          <span>Publisher</span><ArrowRight size={14} aria-hidden="true" />
+          <span>RabbitMQ</span><ArrowRight size={14} aria-hidden="true" />
+          <span>Worker</span><ArrowRight size={14} aria-hidden="true" />
+          <span>Resultado</span>
+        </div>
+      </ConceptTip>
+
       <div id="moderation" className="detail-grid">
         <section className="detail-card" aria-labelledby="moderation-result-title">
           <div className="section-heading"><div><h3 id="moderation-result-title">Moderation result</h3><p>Latest record from the moderation-results endpoint.</p></div></div>
+          <ConceptTip
+            title="Moderation Worker"
+            description="El Worker consume el mensaje, ejecuta deterministic-rules-v1, calcula el score y persiste la decisión."
+          >
+            <div className="concept-tip-ranges" aria-label="Rangos de decisión">
+              <span><strong>0-39</strong> APPROVED</span>
+              <span><strong>40-69</strong> REVIEW_REQUIRED</span>
+              <span><strong>70-100</strong> REJECTED</span>
+            </div>
+            <p className="concept-tip-note">REJECTED es una decisión válida de moderación; no significa que el mensaje haya fallado ni que haya terminado en la DLQ.</p>
+          </ConceptTip>
           {resultsQuery.isPending ? <LoadingState label="Loading moderation result" rows={3} /> : null}
           {resultsQuery.isError ? <ErrorState message={getErrorMessage(resultsQuery.error)} /> : null}
           {latestResult ? (

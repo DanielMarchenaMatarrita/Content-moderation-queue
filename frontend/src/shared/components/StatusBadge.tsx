@@ -12,10 +12,12 @@ type StatusTone = 'neutral' | 'active' | 'success' | 'warning' | 'danger';
 const toneByStatus: Record<string, StatusTone> = {
   PENDING: 'warning',
   PROCESSING: 'active',
+  SUCCESS: 'success',
   APPROVED: 'success',
   REVIEW_REQUIRED: 'warning',
   REJECTED: 'danger',
   FAILED: 'danger',
+  ERROR: 'danger',
   USER: 'neutral',
   MODERATOR: 'active',
   ADMIN: 'success',
@@ -25,9 +27,9 @@ export function StatusBadge({ status }: { status: string }) {
   const tone = toneByStatus[status] ?? 'neutral';
   const label = status.replaceAll('_', ' ').toLowerCase();
   const Icon =
-    status === 'APPROVED'
+    status === 'APPROVED' || status === 'SUCCESS'
       ? CheckCircle
-      : status === 'REJECTED' || status === 'FAILED'
+      : status === 'REJECTED' || status === 'FAILED' || status === 'ERROR'
         ? XCircle
         : status === 'PROCESSING'
           ? SpinnerGap

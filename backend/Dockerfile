@@ -15,9 +15,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN pnpm install --frozen-lockfile
 
 COPY . .
-RUN DIRECT_URL=postgresql://cmq_demo:cmq_demo@localhost:5432/cmq_demo pnpm exec prisma generate \
+RUN DIRECT_URL=postgresql://paygrid:paygrid@localhost:5432/paygrid pnpm exec prisma generate \
   && pnpm run build:api \
-  && pnpm run build:worker
+  && pnpm run build:order-processor
 
 ENV NODE_ENV=production
 

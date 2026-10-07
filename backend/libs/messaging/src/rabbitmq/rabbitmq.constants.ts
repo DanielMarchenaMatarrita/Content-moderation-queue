@@ -33,4 +33,37 @@ export const RABBITMQ_TOPOLOGY = {
     maxRetries: 3,
     publishTimeoutMs: 10_000,
   },
+  paygrid: {
+    eventsExchange: {
+      name: 'paygrid.events',
+      type: 'topic',
+      durable: true,
+    },
+    retryExchange: {
+      name: 'paygrid.retry',
+      type: 'direct',
+      durable: true,
+    },
+    deadLetterExchange: {
+      name: 'paygrid.dlx',
+      type: 'direct',
+      durable: true,
+    },
+    paymentOrderCreated: {
+      queueName: 'payment-orders.process.v1',
+      routingKey: 'payment-order.created',
+      retryQueue: {
+        name: 'payment-orders.retry.v1',
+        routingKey: 'payment-order.created.retry',
+        delayMs: 5_000,
+      },
+      deadLetterQueue: {
+        name: 'payment-orders.dlq.v1',
+        routingKey: 'payment-order.created.dead',
+      },
+      retryHeader: 'x-retry-count',
+      maxRetries: 3,
+      publishTimeoutMs: 10_000,
+    },
+  },
 } as const;

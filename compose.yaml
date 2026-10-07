@@ -1,21 +1,27 @@
 x-backend-environment: &backend-environment
   NODE_ENV: production
-  DATABASE_URL: postgresql://cmq_demo:cmq_demo@postgres:5432/cmq_demo
-  DIRECT_URL: postgresql://cmq_demo:cmq_demo@postgres:5432/cmq_demo
-  RABBITMQ_URL: amqp://moderation_dev:moderation_dev@rabbitmq:5672
+  DATABASE_URL: postgresql://${POSTGRES_USER:-paygrid}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-paygrid}
+  DIRECT_URL: postgresql://${POSTGRES_USER:-paygrid}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@postgres:5432/${POSTGRES_DB:-paygrid}
+  RABBITMQ_URL: amqp://${RABBITMQ_USER:-paygrid}:${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}@rabbitmq:5672
+
+x-backend-service: &backend-service
+  image: ${PAYGRID_BACKEND_IMAGE:-danieleng96/paygrid-backend:1.0.0}
+  restart: unless-stopped
+  init: true
+  environment: *backend-environment
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cmq_demo
-      POSTGRES_USER: cmq_demo
-      POSTGRES_PASSWORD: cmq_demo
+      POSTGRES_DB: ${POSTGRES_DB:-paygrid}
+      POSTGRES_USER: ${POSTGRES_USER:-paygrid}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cmq_demo -d cmq_demo"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -25,11 +31,10 @@ services:
     image: rabbitmq:4.1.4-management
     restart: unless-stopped
     environment:
-      RABBITMQ_DEFAULT_USER: moderation_dev
-      RABBITMQ_DEFAULT_PASS: moderation_dev
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-paygrid}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Set RABBITMQ_PASSWORD in .env}
     ports:
-      - "5672:5672"
-      - "15672:15672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -40,11 +45,9 @@ services:
       start_period: 20s
 
   api:
+    <<: *backend-service
     build:
       context: ./backend
-    restart: unless-stopped
-    init: true
-    environment: *backend-environment
     command:
       - sh
       - -c
@@ -63,22 +66,17 @@ services:
       retries: 12
       start_period: 15s
 
-  moderation-worker:
-    build:
-      context: ./backend
-    restart: unless-stopped
-    init: true
-    environment: *backend-environment
-    command: ["node", "dist/apps/moderation-worker/main.js"]
+  order-processor:
+    <<: *backend-service
+    command: ["node", "dist/apps/order-processor/main.js"]
     depends_on:
       postgres:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-      api:
-        condition: service_healthy
 
   frontend:
+    image: ${PAYGRID_FRONTEND_IMAGE:-danieleng96/paygrid-frontend:1.0.0}
     build:
       context: ./frontend
     restart: unless-stopped

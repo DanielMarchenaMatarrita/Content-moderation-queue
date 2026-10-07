@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { diagnosticsQueryKeys, listOutboxEvents, type ListOutboxEventsParams } from '../features/diagnostics/api';
 import { Badge } from '../shared/components/Badge';
 import { Button } from '../shared/components/Button';
+import { ConceptTip } from '../shared/components/ConceptTip';
 import { EmptyState, ErrorState, LoadingState } from '../shared/components/DataStates';
 import { Input, Select } from '../shared/components/FormControls';
 import { PageHeader } from '../shared/components/PageHeader';
@@ -33,6 +34,12 @@ export function OutboxEventsPage() {
   return (
     <div className="page-stack">
       <PageHeader eyebrow="System" title="Outbox Events" description="Events persisted transactionally before asynchronous publication." />
+      <ConceptTip
+        title="Transactional Outbox"
+        description="Content, ModerationHistory y OutboxEvent se registran dentro de la transacción de creación. El evento se publica posteriormente hacia RabbitMQ."
+      >
+        <p className="concept-tip-note">Evita el problema de dual-write: que PostgreSQL confirme el cambio pero falle la publicación independiente hacia RabbitMQ.</p>
+      </ConceptTip>
       <form className="filter-toolbar" onSubmit={applyFilters}>
         <div className="filter-control"><label htmlFor="event-type">Event type</label><Input id="event-type" value={eventType} onChange={(event) => setEventType(event.target.value)} /></div>
         <div className="filter-control filter-grow"><label htmlFor="aggregate-id">Aggregate UUID</label><Input id="aggregate-id" value={aggregateId} onChange={(event) => setAggregateId(event.target.value)} /></div>

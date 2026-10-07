@@ -54,6 +54,15 @@
       "compilerOptions": {
         "tsConfigPath": "apps/moderation-worker/tsconfig.app.json"
       }
+    },
+    "order-processor": {
+      "type": "application",
+      "root": "apps/order-processor",
+      "entryFile": "main",
+      "sourceRoot": "apps/order-processor/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/order-processor/tsconfig.app.json"
+      }
     }
   }
 }

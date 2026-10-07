@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { diagnosticsQueryKeys, listProcessedMessages, type ListProcessedMessagesParams } from '../features/diagnostics/api';
 import { Badge } from '../shared/components/Badge';
 import { Button } from '../shared/components/Button';
+import { ConceptTip } from '../shared/components/ConceptTip';
 import { EmptyState, ErrorState, LoadingState } from '../shared/components/DataStates';
 import { Input } from '../shared/components/FormControls';
 import { PageHeader } from '../shared/components/PageHeader';
@@ -28,6 +29,10 @@ export function ProcessedMessagesPage() {
   return (
     <div className="page-stack">
       <PageHeader eyebrow="System" title="Processed Messages" description="Messages recorded by consumers to enforce idempotent processing." />
+      <ConceptTip
+        title="Idempotencia"
+        description="Registrar mensajes procesados permite reconocer posibles reentregas y evitar repetir los mismos efectos de negocio."
+      />
       <form className="filter-toolbar" onSubmit={applyFilters}>
         <div className="filter-control filter-grow"><label htmlFor="processed-event-id">Event UUID</label><Input id="processed-event-id" value={eventId} onChange={(event) => setEventId(event.target.value)} /></div>
         <div className="filter-control filter-grow"><label htmlFor="consumer-name">Consumer name</label><Input id="consumer-name" value={consumerName} onChange={(event) => setConsumerName(event.target.value)} /></div>

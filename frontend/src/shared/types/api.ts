@@ -39,6 +39,77 @@ export interface PageResponse<T> {
   total: number;
 }
 
+export const paymentOrderStatuses = [
+  'PENDING',
+  'PROCESSING',
+  'SUCCESS',
+  'FAILED',
+] as const;
+export type PaymentOrderStatus = (typeof paymentOrderStatuses)[number];
+
+export const simulationScenarios = [
+  'SUCCESS',
+  'FAIL_ONCE',
+  'FAIL_TWICE',
+  'ALWAYS_FAIL',
+] as const;
+export type SimulationScenario = (typeof simulationScenarios)[number];
+
+export type ProcessingAttemptStatus = 'SUCCESS' | 'ERROR';
+
+export interface PaymentOrder {
+  id: string;
+  amount: number;
+  currency: string;
+  status: PaymentOrderStatus;
+  simulationScenario: SimulationScenario;
+  retryCount: number;
+  lastError: string | null;
+  createdAt: DateTimeString;
+  updatedAt: DateTimeString;
+}
+
+export interface ProcessingAttempt {
+  id: string;
+  orderId: string;
+  attemptNumber: number;
+  status: ProcessingAttemptStatus;
+  errorDescription: string | null;
+  createdAt: DateTimeString;
+}
+
+export interface PaymentOrderDetail extends PaymentOrder {
+  attempts: ProcessingAttempt[];
+  reprocessScenario: SimulationScenario | null;
+}
+
+export interface ReprocessPaymentOrderInput {
+  scenario: SimulationScenario;
+}
+
+export interface ReprocessedPaymentOrder extends PaymentOrder {
+  reprocessEventId: string;
+}
+
+export interface CreatePaymentOrderInput {
+  amount: number;
+  currency: string;
+  simulationScenario: SimulationScenario;
+}
+
+export interface CreatedPaymentOrder extends PaymentOrder {
+  submissionEventId: string;
+}
+
+export interface PaymentOrderStats {
+  total: number;
+  pending: number;
+  successful: number;
+  failed: number;
+  retried: number;
+  totalAttempts: number;
+}
+
 export interface ContentSummary {
   id: string;
   userId: string;
