@@ -1,110 +1,81 @@
-# Content Moderation Queue
+# PayGrid
 
-Aplicación académica que demuestra moderación asíncrona de contenido mediante una cola de mensajes. Incluye una interfaz web para ejecutar y observar el recorrido completo desde la recepción del contenido hasta la decisión persistida.
+## Descripción general
 
-## Investigación
+PayGrid es un sistema distribuido académico que demuestra procesamiento asíncrono y resiliente de órdenes de pago mediante Message Queue y Retry. **Es una simulación**: no existe integración con bancos ni con pasarelas de pago reales.
 
-**Tema:** Message Queue (cola de mensajes).
+El repositorio sigue publicado bajo el nombre histórico `Content-moderation-queue`; el proyecto actual es PayGrid.
 
-El propósito es demostrar comunicación asíncrona y desacoplamiento entre dos servicios desarrollados por el equipo: **Content API** y **Moderation Worker**, ambos implementados con NestJS. RabbitMQ transporta los eventos entre ellos; PostgreSQL conserva el estado y la evidencia del flujo.
+## Objetivo
 
-El frontend es el cliente de demostración. RabbitMQ y PostgreSQL son infraestructura, no se cuentan como las dos aplicaciones comunicadas.
+Procesar la orden dentro de la misma solicitud HTTP acopla la aceptación al tiempo de ejecución y a los fallos del procesamiento. PayGrid separa ambas cosas: la API acepta y persiste la orden de forma síncrona, y un servicio independiente la procesa de forma asíncrona mediante RabbitMQ, observando el resultado mediante consistencia eventual.
 
-## Problema que resuelve
+## Funcionalidades
 
-Procesar la moderación dentro de la solicitud HTTP acoplaría la API al tiempo de ejecución y a los fallos del moderador. Una operación lenta o temporalmente no disponible afectaría directamente la respuesta al usuario.
-
-La cola permite que la API acepte y persista el contenido, mientras el worker lo modera de forma independiente. El resultado aparece posteriormente mediante consistencia eventual.
-
-## Arquitectura
-
-```mermaid
-flowchart LR
-    U[Usuario] --> F[Frontend React<br/>Nginx]
-    F -->|HTTP /api| A[Content API<br/>NestJS]
-    A -->|Transacción: Content,<br/>History y OutboxEvent| DB[(PostgreSQL)]
-    DB -->|OutboxEvent pendiente| O[Outbox Publisher<br/>dentro de la API]
-    O -->|content.submitted| R[RabbitMQ<br/>exchange content.events]
-    R --> Q[Cola<br/>moderation.content-submitted.v1]
-    Q --> W[Moderation Worker<br/>NestJS]
-    W -->|Transacción: estado, resultado,<br/>historial y ProcessedMessage| DB
-```
-
-`api` y `moderation-worker` son los dos servicios de aplicación que participan en la comunicación asíncrona. El publicador Outbox forma parte del proceso de la API, no es un servicio adicional.
-
-## Flujo de comunicación
-
-1. El usuario crea o selecciona un usuario y envía contenido desde el frontend.
-2. Content API guarda `Content` con estado `PENDING`, la entrada inicial de `ModerationHistory` y un `OutboxEvent` dentro de una misma transacción PostgreSQL.
-3. Outbox Publisher toma el evento pendiente y publica `content.submitted` versión 1 en el exchange `content.events`, con routing key `content.submitted`.
-4. El evento contiene `eventId`, `correlationId`, metadatos temporales y el payload `{ contentId }`. RabbitMQ lo dirige a `moderation.content-submitted.v1`.
-5. Moderation Worker consume el mensaje con confirmación manual.
-6. El worker aplica reglas deterministas y obtiene `APPROVED`, `REVIEW_REQUIRED` o `REJECTED` según el contenido.
-7. En una transacción guarda el estado terminal, `ModerationResult`, la transición final de `ModerationHistory` y el marcador `ProcessedMessage`.
-8. Tras completar la transacción, el consumidor envía el ACK. Un evento ya registrado para ese consumidor se reconoce como duplicado sin repetir sus efectos.
-9. El detalle del contenido consulta periódicamente la API mientras el estado está activo y muestra el resultado final mediante consistencia eventual.
-
-## ¿Por qué RabbitMQ?
-
-RabbitMQ es software libre, se ejecuta fácilmente con Docker y ofrece semántica de colas adecuada para este caso: routing, mensajes persistentes, consumidores con ACK manual y soporte para reintentos y dead-letter queues. Estas características permiten observar claramente el intercambio asíncrono en un entorno educativo.
-
-Alternativas posibles:
-
-- **Apache Kafka:** orientado especialmente a streams durables, logs de eventos y alto rendimiento.
-- **NATS:** mensajería ligera con operación y latencia reducidas.
-
-Para este flujo de trabajo basado en una cola de tareas, RabbitMQ permite mostrar los conceptos requeridos con poca infraestructura local.
-
-## Ventajas
-
-- Desacopla la recepción HTTP del procesamiento de moderación.
-- Evita bloquear la solicitud mientras se ejecuta trabajo independiente.
-- Amortigua ráfagas al conservar mensajes pendientes en la cola.
-- Permite reintentos y aislamiento de mensajes fallidos.
-- Facilita escalar API y consumidores de manera independiente.
-
-## Desventajas
-
-- Introduce infraestructura y configuración adicionales.
-- Requiere aceptar y comunicar consistencia eventual.
-- Debe manejar entregas duplicadas mediante idempotencia.
-- Añade políticas de reintento, errores y DLQ.
-- Hace más compleja la observación y depuración del recorrido distribuido.
-
-## Cuándo usar Message Queue
-
-Es apropiado para trabajo lento o independiente, procesamiento asíncrono, absorción de picos y comunicación entre servicios que no necesitan finalizar dentro de la misma solicitud.
-
-Puede ser innecesario para operaciones simples y síncronas donde la respuesta inmediata, el orden directo y la menor complejidad operativa son más importantes.
+- Creación de órdenes de pago (`POST /orders`) con escenarios de simulación.
+- Procesamiento asíncrono en un servicio independiente (`order-processor`).
+- Transactional Outbox: el evento `payment-order.created` se persiste en la misma transacción que la orden.
+- Mensajería sobre RabbitMQ con exchange `paygrid.events` y colas dedicadas de proceso, retry y dead-letter.
+- ACK manual con entrega *at-least-once* y protección de duplicados (`ProcessedMessage`).
+- Retry automático: máximo 3 reintentos con retardo de 5 s.
+- Dead Letter Queue `payment-orders.dlq.v1` para mensajes con reintentos agotados o inválidos.
+- Historial de procesamiento por orden (`ProcessingAttempt`).
+- Escenarios de fallo deterministas: `SUCCESS`, `FAIL_ONCE`, `FAIL_TWICE`, `ALWAYS_FAIL`.
+- Dashboard con estadísticas de órdenes y diagrama `System flow`.
+- `Processing journey` en el detalle de cada orden.
+- Recuperación manual de órdenes fallidas (`POST /payment-orders/:id/reprocess`).
+- Ejecución local completa con Docker Compose.
 
 ## Tecnologías
 
-- **Backend:** NestJS, TypeScript, Prisma y PostgreSQL.
-- **Mensajería:** RabbitMQ con `amqplib` y `amqp-connection-manager`.
-- **Frontend:** React, TypeScript y Vite.
-- **Infraestructura:** Docker, Docker Compose y Nginx.
+- **Backend:** NestJS + TypeScript, Prisma, `amqplib` y `amqp-connection-manager`.
+- **Frontend:** React + TypeScript + Vite, TanStack Query.
+- **Base de datos:** PostgreSQL 16.
+- **Mensajería:** RabbitMQ 4.1 (imagen con management plugin).
+- **Infraestructura:** Docker, Docker Compose, Nginx.
 
-## Requisitos
+## Arquitectura general
 
-- Git.
-- Docker.
-- Docker Compose.
+```mermaid
+flowchart LR
+    U["Usuario"] --> F["Frontend React<br/>Nginx"]
+    F -->|HTTP| A["Payment Order API<br/>NestJS"]
+    A -->|"orden + OutboxEvent<br/>(una transacción)"| DB[(PostgreSQL)]
+    DB -->|"OutboxEvent pendiente"| O["Outbox Publisher<br/>(dentro del proceso de la API)"]
+    O -->|"payment-order.created"| R["RabbitMQ<br/>exchange paygrid.events"]
+    R --> Q["cola<br/>payment-orders.process.v1"]
+    Q --> W["Order Processor<br/>NestJS"]
+    W -->|"estado e intentos"| DB
+    W -->|"fallo: retry o DLQ"| R
+```
 
-En Windows se recomienda Docker Desktop. El host no necesita Node.js, pnpm, PostgreSQL ni RabbitMQ.
+- `api` y `order-processor` son los dos servicios de aplicación; corren como procesos separados.
+- `postgres` y `rabbitmq` son infraestructura, no servicios de aplicación.
+- El Outbox Publisher forma parte del proceso de la API; no es un servicio adicional.
+- El frontend es el cliente de demostración: solo habla con la API por HTTP, nunca con RabbitMQ.
 
-## Ejecución rápida
+## Inicio rápido
+
+Requisitos: **Git**, **Docker Engine/Desktop** con **Docker Compose**. El host no necesita Node.js, pnpm, PostgreSQL ni RabbitMQ.
 
 En PowerShell:
 
 ```powershell
-git clone https://github.com/DanielMarchenaMatarrita/Content-moderation-queue.git content-moderation-queue
-cd content-moderation-queue
-.\run.ps1
+git clone https://github.com/DanielMarchenaMatarrita/Content-moderation-queue.git
+cd Content-moderation-queue
+Copy-Item .env.example .env
+# Edite .env: defina valores NO vacíos para POSTGRES_PASSWORD y RABBITMQ_PASSWORD
+docker compose up -d --build
+docker compose ps
 ```
 
-`run.ps1` verifica Docker y Docker Compose, construye las imágenes, inicia los cinco servicios y espera su disponibilidad. Durante el arranque, la API ejecuta automáticamente las migraciones existentes con `prisma migrate deploy`; no ejecuta un seed.
+En Linux/macOS: `cp .env.example .env` en lugar de `Copy-Item`.
 
-Servicios de Compose: `postgres`, `rabbitmq`, `api`, `moderation-worker` y `frontend`. Las imágenes de aplicación se construyen desde `backend/Dockerfile` y `frontend/Dockerfile`.
+`--build` es esencial: construye las imágenes desde el código fuente actual de PayGrid. Sin esa bandera, Compose puede reutilizar imágenes previamente construidas o publicadas que no coinciden con el código fuente.
+
+> Los scripts `run.ps1` y `deploy.sh` realizan `docker compose pull` y `up --no-build`: descargan imágenes publicadas y no construyen el código local. No se usan como flujo de incorporación.
+
+## Accesos locales
 
 | Recurso | URL |
 | --- | --- |
@@ -113,87 +84,47 @@ Servicios de Compose: `postgres`, `rabbitmq`, `api`, `moderation-worker` y `fron
 | Swagger | <http://localhost:3000/docs> |
 | RabbitMQ Management | <http://localhost:15672> |
 
-Las credenciales de demostración de RabbitMQ son `moderation_dev` / `moderation_dev` y solo están destinadas al entorno local definido por Compose.
+RabbitMQ Management queda publicado solo en `127.0.0.1`; el puerto puede cambiarse con `RABBITMQ_MANAGEMENT_PORT` en `.env`. Las credenciales provienen de `.env` (`RABBITMQ_USER`, por defecto `paygrid`, y `RABBITMQ_PASSWORD`).
 
-## Ejecución manual con Docker Compose
+## Escenarios de prueba
 
-Desde la raíz del repositorio:
+| Escenario | Secuencia de intentos | Resultado final |
+| --- | --- | --- |
+| `SUCCESS` | Intento inicial `SUCCESS` | `SUCCESS`, `retryCount` 0 |
+| `FAIL_ONCE` | `ERROR` → Retry 1 `SUCCESS` | `SUCCESS`, `retryCount` 1 |
+| `FAIL_TWICE` | `ERROR` → Retry 1 `ERROR` → Retry 2 `SUCCESS` | `SUCCESS`, `retryCount` 2 |
+| `ALWAYS_FAIL` | 4 × `ERROR` | `FAILED`, `retryCount` 3 |
 
-```bash
-docker compose up --build -d
-docker compose ps
-```
+Límite de reintento: **3 reintentos**, es decir intento inicial + Retry 1 + Retry 2 + Retry 3 = **4 intentos máximo** por ciclo agotado. El retardo entre reintentos es de 5 s.
 
-Para consultar diagnósticos:
+## Recuperación manual
 
-```bash
-docker compose logs api moderation-worker rabbitmq
-```
+Una orden en `FAILED` puede recuperarse con `POST /payment-orders/:id/reprocess` (en la interfaz, el botón **Reprocess order**). La recuperación:
 
-## Cómo probar el escenario
+- realiza una transición explícita `FAILED` → `PENDING`;
+- crea un **nuevo** evento Outbox y reutiliza el mismo pipeline de procesamiento;
+- registra un nuevo intento (por ejemplo, el intento 5 tras un `ALWAYS_FAIL` original);
+- conserva el historial de intentos originales y el campo `simulationScenario` original; el escenario aplicado se guarda en `reprocessScenario`;
+- **no** es un retry automático y **no** reproduce (replay) el mensaje de la DLQ: el mensaje original permanece intacto en la cola de dead-letter.
 
-### Demostración con la interfaz
+## Estado del proyecto
 
-1. Abra <http://localhost:8080>.
-2. Entre a **Users**, seleccione **Create user** y registre correo, nombre y una contraseña de 8 a 128 caracteres.
-3. Entre a **Contents**, seleccione **Submit content**, elija el usuario y envíe un texto.
-4. En el detalle observe el estado inicial `PENDING` y espere el estado terminal. La decisión depende de las reglas de moderación; puede ser `APPROVED`, `REVIEW_REQUIRED` o `REJECTED`.
-5. Revise **Moderation result** y **Moderation timeline**. Deben existir el resultado y las transiciones inicial y final.
-6. Abra **System > Outbox events**, localice `content.submitted` por el identificador del contenido y verifique **Published**.
-7. Abra **System > Processed messages** y verifique un registro del consumidor `moderation-worker.content-submitted.v1` para el mismo `eventId`.
-8. Opcionalmente abra RabbitMQ Management para inspeccionar exchange, colas y consumidor activos.
+**IMPLEMENTADO**
 
-Este recorrido evidencia persistencia transaccional, publicación Outbox, entrega por RabbitMQ, consumo del worker, idempotencia y consistencia eventual. Una validación Docker-only del proyecto produjo correctamente un caso `APPROVED`, sin implicar que todos los textos reciban esa decisión.
+- Backend y frontend de PayGrid funcionales.
+- RabbitMQ con retry (máx. 3) y Dead Letter Queue.
+- Transactional Outbox con publicación confirmada.
+- Historial de procesamiento (`ProcessingAttempt`) y estadísticas.
+- Recuperación manual de órdenes fallidas.
+- Ejecución local con Docker Compose.
 
-### Alternativa con Swagger
+**PENDIENTE**
 
-Swagger está disponible en <http://localhost:3000/docs>. Use `POST /users` con los campos `email`, `displayName` y `password`; después use el `id` devuelto en `POST /contents` con los campos `userId` y `body`. Los endpoints `GET /contents/{id}`, `GET /contents/{id}/moderation-results`, `GET /contents/{id}/moderation-history`, `GET /internal/outbox-events` y `GET /internal/processed-messages` permiten comprobar el flujo.
+- Publicación final de las imágenes en Docker Hub.
+- Despliegue remoto público.
+- Verificación de un despliegue en producción.
 
-## Evidencia de Message Queue
+## Documentación
 
-| Elemento | Evidencia concreta |
-| --- | --- |
-| Iniciador | Content API al aceptar `POST /contents` |
-| Información transmitida | Evento `content.submitted` v1; incluye `eventId`, `correlationId` y `payload.contentId` |
-| Transporte | Exchange RabbitMQ `content.events` y cola `moderation.content-submitted.v1` |
-| Procesador | Moderation Worker, consumidor `moderation-worker.content-submitted.v1` |
-| Resultado observable | Outbox **Published**, `ModerationResult`, historial final, `ProcessedMessage` y estado terminal |
-
-## Confiabilidad
-
-- **Transactional Outbox:** `Content`, historial inicial y `OutboxEvent` se crean en una sola transacción. El publicador marca `publishedAt` después de publicar mediante un canal con confirmación.
-- **Consumo idempotente:** la combinación única `(eventId, consumerName)` en `ProcessedMessage` impide repetir los efectos de un evento ya procesado. El marcador y los cambios de moderación se confirman en la misma transacción.
-- **ACK manual:** el consumidor usa `noAck: false` y confirma el mensaje después del procesamiento transaccional exitoso o de reconocer un duplicado.
-- **Retry y DLQ:** un fallo se republica en `moderation.content-submitted.retry.v1`, espera 5 segundos y vuelve a la cola principal. Después de un máximo de tres reintentos pasa a `moderation.content-submitted.dlq.v1`; mensajes inválidos van directamente a esa DLQ. El mensaje original se confirma después de republicarlo correctamente.
-
-## Estructura relevante
-
-```text
-backend/
-  apps/api/                    Content API y Outbox Publisher
-  apps/moderation-worker/      Consumidor y motor de moderación
-  libs/contracts/              Contrato content.submitted
-  libs/database/               Acceso Prisma
-  libs/messaging/              Conexión y topología RabbitMQ
-  prisma/migrations/           Migración inicial
-  Dockerfile
-frontend/                      Cliente React servido por Nginx
-  Dockerfile
-  nginx.conf
-compose.yaml                   Orquestación completa
-run.ps1                        Inicio reproducible en Windows
-```
-
-## Detener la aplicación
-
-```bash
-docker compose down
-```
-
-Para reiniciar también la base de datos y RabbitMQ desde cero:
-
-```bash
-docker compose down -v
-```
-
-> **Advertencia:** `-v` elimina permanentemente los datos locales guardados en los volúmenes de PostgreSQL y RabbitMQ.
+- [Arquitectura de PayGrid](docs/architecture.md) — componentes, topología RabbitMQ, outbox, retry/DLQ, idempotencia, recuperación manual y modelo de persistencia.
+- [Guía de desarrollo y ejecución local](docs/development.md) — requisitos, arranque, migraciones, demo paso a paso, solución de problemas y referencia de la API.
