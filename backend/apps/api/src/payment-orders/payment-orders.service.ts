@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PAYMENT_ORDER_CREATED_EVENT } from '@app/contracts';
 import { PrismaService } from '@app/database';
+import { logApplicationEvent } from '@app/observability';
 import {
   PaymentOrderStatus,
   type Prisma,
@@ -77,6 +78,12 @@ export class PaymentOrdersService {
         },
       });
 
+      logApplicationEvent('api', 'info', {
+        event: 'payment_order_created',
+        orderId: order.id,
+        result: 'accepted',
+        retryCount: 0,
+      });
       return { ...order, submissionEventId: eventId };
     });
   }
@@ -123,6 +130,12 @@ export class PaymentOrdersService {
           occurredAt,
           createdAt: occurredAt,
         },
+      });
+      logApplicationEvent('api', 'info', {
+        event: 'payment_order_reprocess_requested',
+        orderId: order.id,
+        result: 'accepted',
+        retryCount: 0,
       });
       return { ...order, reprocessEventId: eventId };
     });

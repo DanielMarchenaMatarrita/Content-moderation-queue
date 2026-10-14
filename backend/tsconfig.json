@@ -40,6 +40,12 @@
       ],
       "@app/messaging/*": [
         "./libs/messaging/src/*"
+      ],
+      "@app/observability": [
+        "./libs/observability/src/index.ts"
+      ],
+      "@app/observability/*": [
+        "./libs/observability/src/*"
       ]
     }
   },
@@ -53,6 +59,9 @@
     },
     {
       "path": "./apps/order-processor/tsconfig.app.json"
+    },
+    {
+      "path": "./libs/observability/tsconfig.lib.json"
     }
   ]
 }

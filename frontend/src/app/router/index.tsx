@@ -5,6 +5,7 @@ import { NotFoundPage } from '../../pages/NotFoundPage';
 import { CreateOrderPage } from '../../pages/CreateOrderPage';
 import { OrderDetailPage } from '../../pages/OrderDetailPage';
 import { OrdersPage } from '../../pages/OrdersPage';
+import { ArchitecturePage } from '../../pages/ArchitecturePage';
 
 export const router = createBrowserRouter([
   {
@@ -15,6 +16,7 @@ export const router = createBrowserRouter([
       { path: 'orders', element: <OrdersPage /> },
       { path: 'orders/new', element: <CreateOrderPage /> },
       { path: 'orders/:id', element: <OrderDetailPage /> },
+      { path: 'architecture', element: <ArchitecturePage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

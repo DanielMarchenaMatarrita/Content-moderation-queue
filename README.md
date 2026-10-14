@@ -64,7 +64,7 @@ En PowerShell:
 git clone https://github.com/DanielMarchenaMatarrita/Content-moderation-queue.git
 cd Content-moderation-queue
 Copy-Item .env.example .env
-# Edite .env: defina valores NO vacíos para POSTGRES_PASSWORD y RABBITMQ_PASSWORD
+# Edite .env: defina valores NO vacíos para POSTGRES_PASSWORD, RABBITMQ_PASSWORD y GRAFANA_ADMIN_PASSWORD
 docker compose up -d --build
 docker compose ps
 ```
@@ -83,8 +83,9 @@ En Linux/macOS: `cp .env.example .env` en lugar de `Copy-Item`.
 | API | <http://localhost:3000> |
 | Swagger | <http://localhost:3000/docs> |
 | RabbitMQ Management | <http://localhost:15672> |
+| Grafana | <http://localhost:3001> |
 
-RabbitMQ Management queda publicado solo en `127.0.0.1`; el puerto puede cambiarse con `RABBITMQ_MANAGEMENT_PORT` en `.env`. Las credenciales provienen de `.env` (`RABBITMQ_USER`, por defecto `paygrid`, y `RABBITMQ_PASSWORD`).
+RabbitMQ Management y Grafana quedan publicados solo en `127.0.0.1`; las credenciales provienen de `.env`. RabbitMQ usa `RABBITMQ_USER` (por defecto `paygrid`) y `RABBITMQ_PASSWORD`; Grafana usa `GRAFANA_ADMIN_USER` (por defecto `admin`) y `GRAFANA_ADMIN_PASSWORD`.
 
 ## Escenarios de prueba
 

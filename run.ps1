@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $envPath = Join-Path $PSScriptRoot '.env'
 $envExamplePath = Join-Path $PSScriptRoot '.env.example'
-$credentialInstruction = 'Set non-empty POSTGRES_PASSWORD and RABBITMQ_PASSWORD in .env, then rerun this script.'
+$credentialInstruction = 'Set non-empty POSTGRES_PASSWORD, RABBITMQ_PASSWORD, and GRAFANA_ADMIN_PASSWORD in .env, then rerun this script.'
 
 if (-not (Test-Path -LiteralPath $envPath)) {
     Copy-Item -LiteralPath $envExamplePath -Destination $envPath
@@ -34,7 +34,8 @@ function Test-InvalidCredential {
 
 $postgresPassword = Get-DotEnvValue -Name 'POSTGRES_PASSWORD'
 $rabbitPassword = Get-DotEnvValue -Name 'RABBITMQ_PASSWORD'
-if ((Test-InvalidCredential $postgresPassword) -or (Test-InvalidCredential $rabbitPassword)) {
+$grafanaAdminPassword = Get-DotEnvValue -Name 'GRAFANA_ADMIN_PASSWORD'
+if ((Test-InvalidCredential $postgresPassword) -or (Test-InvalidCredential $rabbitPassword) -or (Test-InvalidCredential $grafanaAdminPassword)) {
     [Console]::Error.WriteLine($credentialInstruction)
     exit 1
 }

@@ -35,8 +35,9 @@ En Linux/macOS: `cp .env.example .env`.
 | --- | --- |
 | `POSTGRES_PASSWORD` | Contraseña de PostgreSQL (obligatoria: Compose aborta si está vacía) |
 | `RABBITMQ_PASSWORD` | Contraseña de RabbitMQ (obligatoria: Compose aborta si está vacía) |
+| `GRAFANA_ADMIN_PASSWORD` | Contraseña de administración de Grafana (obligatoria: Compose aborta si está vacía) |
 
-Variables opcionales verificadas en `.env.example`: `POSTGRES_DB` (`paygrid`), `POSTGRES_USER` (`paygrid`), `RABBITMQ_USER` (`paygrid`), `RABBITMQ_MANAGEMENT_PORT` (`15672`), `PAYGRID_BACKEND_IMAGE` y `PAYGRID_FRONTEND_IMAGE` (tags por defecto de Docker Hub).
+Variables opcionales verificadas en `.env.example`: `POSTGRES_DB` (`paygrid`), `POSTGRES_USER` (`paygrid`), `RABBITMQ_USER` (`paygrid`), `RABBITMQ_MANAGEMENT_PORT` (`15672`), `GRAFANA_ADMIN_USER` (`admin`), `PAYGRID_BACKEND_IMAGE` y `PAYGRID_FRONTEND_IMAGE` (tags por defecto de Docker Hub).
 
 `.env` está en `.gitignore`; **nunca** se commitéa. No hay archivo `.env` versionado en el repositorio.
 
@@ -50,9 +51,9 @@ docker compose ps
 - `--build` fuerza la construcción de las imágenes desde el código fuente actual (obligatorio para trabajar con el código local).
 - `-d` ejecuta los servicios en segundo plano.
 
-Servicios esperados en `docker compose ps` (nombres exactos de `compose.yaml`): `postgres`, `rabbitmq`, `api`, `order-processor`, `frontend`.
+Servicios esperados en `docker compose ps` (nombres exactos de `compose.yaml`): `postgres`, `rabbitmq`, `api`, `order-processor`, `frontend`, `loki`, `alloy`, `grafana`.
 
-Estado saludable: `postgres`, `rabbitmq`, `api` y `frontend` con healthcheck `healthy`; `order-processor` no define healthcheck (se valida por sus logs).
+Estado saludable: `postgres`, `rabbitmq`, `api` y `frontend` con healthcheck `healthy`; `order-processor`, `loki`, `alloy` y `grafana` no definen healthcheck (se validan por sus logs y endpoints publicados).
 
 ## 6.4 Migraciones de base de datos
 
@@ -79,6 +80,7 @@ La creación de migraciones solo se necesita como recuperación real (por ejempl
 | API | <http://localhost:3000> | — |
 | Swagger | <http://localhost:3000/docs> | — |
 | RabbitMQ Management | <http://localhost:15672> | `RABBITMQ_USER` (por defecto `paygrid`) y `RABBITMQ_PASSWORD` de `.env` |
+| Grafana | <http://localhost:3001> | `GRAFANA_ADMIN_USER` (por defecto `admin`) y `GRAFANA_ADMIN_PASSWORD` de `.env` |
 
 Notas verificadas:
 
@@ -107,7 +109,7 @@ La recuperación **no** es un replay del mensaje de la DLQ: crea un evento nuevo
 
 | Comando | Utilidad |
 | --- | --- |
-| `docker compose ps` | Estado de los cinco servicios y healthchecks |
+| `docker compose ps` | Estado de los ocho servicios y healthchecks |
 | `docker compose logs -f` | Logs de todos los servicios en vivo |
 | `docker compose logs -f api` | Logs de la API: migraciones, ciclo del Outbox Publisher |
 | `docker compose logs -f order-processor` | Logs del consumidor: entrega, retry, dead-letter |
@@ -133,7 +135,7 @@ docker compose up -d --build
 | --- | --- | --- |
 | `docker: command not found` | Docker no instalado o fuera de PATH | Instale Docker Desktop y reinicie la terminal |
 | `Docker daemon is not available` | Docker Desktop detenido | Inicie Docker Desktop y repita `docker info` |
-| Compose aborta con `Set POSTGRES_PASSWORD in .env` | `.env` con contraseñas vacías | Edite `.env` y defina `POSTGRES_PASSWORD` y `RABBITMQ_PASSWORD` no vacíos; vuelva a ejecutar `docker compose up -d --build` |
+| Compose aborta por una contraseña requerida | `.env` con contraseñas vacías | Edite `.env` y defina `POSTGRES_PASSWORD`, `RABBITMQ_PASSWORD` y `GRAFANA_ADMIN_PASSWORD` no vacíos; vuelva a ejecutar `docker compose up -d --build` |
 | Puerto ocupado (`8080`, `3000`, `15672`) | Otro proceso usando el puerto | `docker compose ps`; libere el puerto o cambie `RABBITMQ_MANAGEMENT_PORT` en `.env` para la consola de RabbitMQ |
 | El contenedor `api` falla al arrancar | Fallo en `prisma migrate deploy` | `docker compose logs api`; verifique credenciales de `.env` y que la migración exista en `backend/prisma/migrations/` |
 | `api`/`order-processor` reintentan conexión a RabbitMQ | Broker aún arrancando o credenciales incorrectas | `docker compose logs rabbitmq`; verifique `RABBITMQ_PASSWORD` y el healthcheck (`healthy`) |

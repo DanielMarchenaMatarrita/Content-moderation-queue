@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/database';
+import { logApplicationEvent } from '@app/observability';
 import { PAYMENT_ORDER_CREATED_CONSUMER_CONFIG } from './payment-order-created.constants.js';
 
 export type PaymentOrderExecution = 'processed' | 'duplicate' | 'failed';
@@ -22,14 +23,20 @@ export class PaymentOrderProcessorService {
       },
       select: { id: true },
     });
-    if (alreadyProcessed) return 'duplicate';
+    if (alreadyProcessed) {
+      this.logResult(orderId, 'duplicate', retryCount);
+      return 'duplicate';
+    }
     const order = await this.prisma.paymentOrder.findUnique({
       where: { id: orderId },
       select: { simulationScenario: true, reprocessScenario: true, retryCount: true },
     });
     if (!order) throw new Error(`PaymentOrder ${orderId} not found`);
     const isRecoveryCycle = order.reprocessScenario !== null;
-    if (isRecoveryCycle && order.retryCount !== retryCount) return 'duplicate';
+    if (isRecoveryCycle && order.retryCount !== retryCount) {
+      this.logResult(orderId, 'duplicate', retryCount);
+      return 'duplicate';
+    }
     const scenario = order.reprocessScenario ?? order.simulationScenario;
     const latestAttempt = isRecoveryCycle
       ? await this.prisma.processingAttempt.findFirst({
@@ -65,10 +72,13 @@ export class PaymentOrderProcessorService {
           });
         });
       } catch (error) {
-        if (isRecoveryCycle && isProcessingAttemptDuplicate(error))
+        if (isRecoveryCycle && isProcessingAttemptDuplicate(error)) {
+          this.logResult(orderId, 'duplicate', retryCount);
           return 'duplicate';
+        }
         throw error;
       }
+      this.logResult(orderId, 'failed', retryCount);
       return 'failed';
     }
     try {
@@ -94,11 +104,28 @@ export class PaymentOrderProcessorService {
           data: { status: 'SUCCESS', retryCount, lastError: null },
         });
       });
+      this.logResult(orderId, 'processed', retryCount);
       return 'processed';
     } catch (error) {
-      if (isProcessedMessageDuplicate(error)) return 'duplicate';
+      if (isProcessedMessageDuplicate(error)) {
+        this.logResult(orderId, 'duplicate', retryCount);
+        return 'duplicate';
+      }
       throw error;
     }
+  }
+
+  private logResult(
+    orderId: string,
+    result: PaymentOrderExecution,
+    retryCount: number,
+  ): void {
+    logApplicationEvent('order-processor', result === 'failed' ? 'error' : 'info', {
+      event: 'payment_order_processed',
+      orderId,
+      result,
+      retryCount,
+    });
   }
 }
 

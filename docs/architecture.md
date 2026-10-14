@@ -6,6 +6,10 @@ Este documento describe primero la arquitectura implementada (5.1–5.15) y desp
 
 ## 5.1 Panorama arquitectónico
 
+### Diagrama interactivo
+
+[Abrir arquitectura de alto nivel de PayGrid (interactiva)](architecture/diagrams/paygrid-high-level.architecture.html). El artefacto está fijado al commit `36d7750c8d07f1703baa3d628cb0c9325743dc34`; muestra la ruta HTTP, el procesamiento asíncrono, persistencia, observabilidad local y los límites de despliegue verificados.
+
 PayGrid separa la **aceptación** de una orden de pago de su **ejecución**:
 
 - La solicitud HTTP es corta: valida, persiste la orden y registra un evento, luego responde.
@@ -245,10 +249,13 @@ No se afirma confiabilidad perfecta: existen entregas duplicadas, ventanas de in
 | `api` | build `./backend` | `3000:3000` | Ejecuta `prisma migrate deploy` antes de arrancar; healthcheck HTTP |
 | `order-processor` | build `./backend` | — | Mismo contexto de build que `api`; sin servidor HTTP |
 | `frontend` | build `./frontend` | `8080:80` | Nginx sirve el build y hace proxy de `/api/` hacia `api:3000` |
+| `loki` | `grafana/loki:3.5.0` | — | Almacenamiento local de logs; volumen `loki_data` |
+| `alloy` | `grafana/alloy:v1.11.2` | — | Descubre logs de contenedores `api` y `order-processor`; los envía a Loki |
+| `grafana` | `grafana/grafana:12.0.1` | `127.0.0.1:3001:3000` | Datasource Loki y dashboards provisionados |
 
 ### PLANNED / NOT YET DEPLOYED
 
-El despliegue remoto está **planeado y no implementado** en este repositorio: no hay dirección VPS, IP, DNS, HTTPS, balanceadores ni sistema de monitoreo configurados. Las imágenes de Docker Hub referenciadas por Compose (`danieleng96/paygrid-backend:1.0.0`, `danieleng96/paygrid-frontend:1.0.0`) y los scripts `run.ps1`/`deploy.sh` son material de preparación; la publicación final y cualquier despliegue público quedan como trabajo pendiente (ver `README.md` → Estado del proyecto).
+El despliegue remoto está **planeado y no implementado** en este repositorio: no hay dirección VPS, IP, DNS, HTTPS ni balanceadores configurados. Las imágenes de Docker Hub referenciadas por Compose (`danieleng96/paygrid-backend:1.0.0`, `danieleng96/paygrid-frontend:1.0.0`) y los scripts `run.ps1`/`deploy.sh` son material de preparación; la publicación final y cualquier despliegue público quedan como trabajo pendiente (ver `README.md` → Estado del proyecto). La observabilidad implementada es local: Alloy recopila logs estructurados de `api` y `order-processor`, Loki los almacena y Grafana consulta la datasource provisionada. No se afirma monitoreo remoto ni telemetría de broker en la UI de PayGrid.
 
 ## 5.15 Compromisos arquitectónicos
 
