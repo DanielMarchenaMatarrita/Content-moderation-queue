@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "PayGrid — High-Level System Architecture",
+    "locale": "en",
+    "output": "docs/architecture/diagrams/paygrid-high-level.architecture.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/DanielMarchenaMatarrita/Content-moderation-queue.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "36d7750c8d07f1703baa3d628cb0c9325743dc34"
+    },
+    "views": [
+      {
+        "id": "request-path",
+        "label": "HTTP request path",
+        "focus": ["browser", "frontend", "api", "postgres"],
+        "note": "The API commits the order and outbox event before responding."
+      },
+      {
+        "id": "async-path",
+        "label": "Async processing",
+        "focus": ["api", "outbox", "rabbitmq", "processor", "retry", "dlq"],
+        "note": "The outbox publisher is part of the API process, not a separate service."
+      },
+      {
+        "id": "logs",
+        "label": "Logs pipeline",
+        "focus": ["api", "processor", "alloy", "loki", "grafana"],
+        "note": "Alloy discovers only the API and order-processor containers."
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "Client / Browser",
+      "sublabel": "uses PayGrid web UI",
+      "pos": [40, 330],
+      "size": [135, 66],
+      "sources": [{ "path": "frontend/src/main.tsx", "line": 1, "end_line": 14, "label": "React client entry" }]
+    },
+    {
+      "id": "dockerhub",
+      "type": "external",
+      "label": "Docker Hub",
+      "sublabel": "external image registry",
+      "pos": [425, 65],
+      "size": [150, 66],
+      "sources": [{ "path": "compose.yaml", "line": 7, "end_line": 9, "label": "backend image reference" }, { "path": "compose.yaml", "line": 78, "end_line": 81, "label": "frontend image reference" }]
+    },
+    {
+      "id": "frontend",
+      "type": "frontend",
+      "label": "React Frontend",
+      "sublabel": "served by Nginx :80",
+      "pos": [230, 330],
+      "size": [155, 66],
+      "sources": [{ "path": "frontend/Dockerfile", "line": 1, "end_line": 21, "label": "React build and Nginx" }, { "path": "frontend/nginx.conf", "line": 7, "end_line": 22, "label": "static UI and API proxy" }]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Payment Order API",
+      "sublabel": "NestJS HTTP :3000",
+      "pos": [440, 330],
+      "size": [160, 66],
+      "sources": [{ "path": "backend/apps/api/src/main.ts", "line": 7, "end_line": 29, "label": "NestJS HTTP bootstrap" }, { "path": "backend/apps/api/src/payment-orders/payment-orders.controller.ts", "line": 30, "end_line": 43, "label": "order creation endpoint" }]
+    },
+    {
+      "id": "outbox",
+      "type": "backend",
+      "label": "Transactional Outbox Publisher",
+      "sublabel": "inside API NestJS process",
+      "tag": "not separately deployed",
+      "pos": [420, 190],
+      "size": [200, 74],
+      "sources": [{ "path": "backend/apps/api/src/outbox/outbox-publisher.service.ts", "line": 31, "end_line": 87, "label": "API lifecycle publisher" }, { "path": "backend/apps/api/src/outbox/outbox-publisher.service.ts", "line": 119, "end_line": 188, "label": "claim, publish, mark sent" }]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL",
+      "sublabel": "orders, attempts, outbox",
+      "pos": [790, 330],
+      "size": [145, 66],
+      "sources": [{ "path": "backend/prisma/schema.prisma", "line": 127, "end_line": 182, "label": "PayGrid persistence schema" }, { "path": "compose.yaml", "line": 13, "end_line": 28, "label": "PostgreSQL service" }]
+    },
+    {
+      "id": "rabbitmq",
+      "type": "messagebus",
+      "label": "RabbitMQ",
+      "sublabel": "paygrid.events + main queue",
+      "pos": [790, 470],
+      "size": [155, 66],
+      "sources": [{ "path": "backend/libs/messaging/src/rabbitmq/rabbitmq.constants.ts", "line": 36, "end_line": 66, "label": "PayGrid topology names" }, { "path": "backend/libs/messaging/src/rabbitmq/paygrid-topology.service.ts", "line": 31, "end_line": 45, "label": "main queue binding" }, { "path": "compose.yaml", "line": 30, "end_line": 45, "label": "RabbitMQ service" }]
+    },
+    {
+      "id": "processor",
+      "type": "backend",
+      "label": "Order Processor",
+      "sublabel": "independent NestJS process",
+      "pos": [1020, 470],
+      "size": [165, 66],
+      "sources": [{ "path": "backend/apps/order-processor/src/main.ts", "line": 1, "end_line": 8, "label": "application context bootstrap" }, { "path": "backend/apps/order-processor/src/payment-order-created-runtime-consumer.service.ts", "line": 28, "end_line": 94, "label": "manual-ACK consumer" }, { "path": "compose.yaml", "line": 69, "end_line": 76, "label": "independent service command" }]
+    },
+    {
+      "id": "retry",
+      "type": "messagebus",
+      "label": "Retry Queue",
+      "sublabel": "5-second delay; max 3 retries",
+      "pos": [1020, 615],
+      "size": [165, 66],
+      "sources": [{ "path": "backend/libs/messaging/src/rabbitmq/rabbitmq.constants.ts", "line": 42, "end_line": 65, "label": "retry configuration" }, { "path": "backend/libs/messaging/src/rabbitmq/paygrid-topology.service.ts", "line": 47, "end_line": 66, "label": "TTL and return route" }, { "path": "backend/apps/order-processor/src/payment-order-created-failure-router.service.ts", "line": 44, "end_line": 58, "label": "retry publication" }]
+    },
+    {
+      "id": "dlq",
+      "type": "messagebus",
+      "label": "Dead Letter Queue",
+      "sublabel": "invalid or exhausted messages",
+      "pos": [1230, 615],
+      "size": [165, 66],
+      "sources": [{ "path": "backend/libs/messaging/src/rabbitmq/paygrid-topology.service.ts", "line": 68, "end_line": 82, "label": "DLQ declaration" }, { "path": "backend/apps/order-processor/src/payment-order-created-runtime-consumer.service.ts", "line": 63, "end_line": 93, "label": "exhaustion routing" }, { "path": "backend/apps/order-processor/src/payment-order-created-failure-router.service.ts", "line": 60, "end_line": 74, "label": "dead-letter publication" }]
+    },
+    {
+      "id": "alloy",
+      "type": "backend",
+      "label": "Grafana Alloy",
+      "sublabel": "discovers API + processor logs",
+      "pos": [700, 700],
+      "size": [160, 66],
+      "sources": [{ "path": "observability/alloy/config.alloy", "line": 1, "end_line": 18, "label": "container discovery filter" }, { "path": "observability/alloy/config.alloy", "line": 20, "end_line": 50, "label": "Loki processing and write" }, { "path": "compose.yaml", "line": 103, "end_line": 112, "label": "Alloy service" }]
+    },
+    {
+      "id": "loki",
+      "type": "database",
+      "label": "Grafana Loki",
+      "sublabel": "local log storage",
+      "pos": [930, 700],
+      "size": [145, 66],
+      "sources": [{ "path": "observability/loki/config.yml", "line": 1, "end_line": 28, "label": "Loki local storage" }, { "path": "compose.yaml", "line": 95, "end_line": 101, "label": "Loki service" }]
+    },
+    {
+      "id": "grafana",
+      "type": "frontend",
+      "label": "Grafana",
+      "sublabel": "provisioned Loki datasource",
+      "pos": [1160, 700],
+      "size": [165, 66],
+      "sources": [{ "path": "observability/grafana/provisioning/datasources/loki.yml", "line": 1, "end_line": 10, "label": "Loki datasource" }, { "path": "compose.yaml", "line": 113, "end_line": 127, "label": "Grafana service" }]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Docker Compose deployment boundary",
+      "wraps": ["frontend", "api", "outbox", "postgres", "rabbitmq", "processor", "retry", "dlq", "alloy", "loki", "grafana"],
+      "pad": 30
+    },
+    {
+      "kind": "security-group",
+      "label": "API container — one NestJS process",
+      "wraps": ["api", "outbox"],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    { "id": "browser-frontend", "from": "browser", "to": "frontend", "label": "HTTP :8080", "variant": "emphasis" },
+    { "id": "frontend-api", "from": "frontend", "to": "api", "label": "HTTP /api proxy", "variant": "emphasis" },
+    { "id": "api-postgres", "from": "api", "to": "postgres", "label": "transaction: order + outbox" },
+    { "id": "api-outbox", "from": "api", "to": "outbox", "label": "same API process", "fromSide": "top", "toSide": "bottom" },
+    { "id": "outbox-postgres", "from": "outbox", "to": "postgres", "label": "outbox state" },
+    { "id": "outbox-rabbitmq", "from": "outbox", "to": "rabbitmq", "label": "payment-order.created", "variant": "dashed" },
+    { "id": "rabbitmq-processor", "from": "rabbitmq", "to": "processor", "label": "main processing queue", "variant": "dashed" },
+    { "id": "processor-postgres", "from": "processor", "to": "postgres", "label": "persist attempts + state", "fromSide": "top", "toSide": "bottom" },
+    { "id": "processor-retry", "from": "processor", "to": "retry", "label": "failure; retry count + 1", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "retry-rabbitmq", "from": "retry", "to": "rabbitmq", "label": "after TTL, return to main queue", "variant": "dashed", "fromSide": "left", "toSide": "bottom" },
+    { "id": "processor-dlq", "from": "processor", "to": "dlq", "label": "invalid or retries exhausted", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "api-alloy", "from": "api", "to": "alloy", "label": "structured container logs", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "processor-alloy", "from": "processor", "to": "alloy", "label": "structured container logs", "variant": "dashed", "fromSide": "bottom", "toSide": "right" },
+    { "id": "alloy-loki", "from": "alloy", "to": "loki", "label": "push logs", "variant": "dashed" },
+    { "id": "grafana-loki", "from": "grafana", "to": "loki", "label": "query Loki", "fromSide": "left", "toSide": "right" },
+    { "id": "dockerhub-api", "from": "dockerhub", "to": "api", "label": "backend image reference", "variant": "dashed", "fromSide": "bottom", "toSide": "top" }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Processing semantics",
+      "items": ["HTTP acceptance commits PaymentOrder and OutboxEvent in one PostgreSQL transaction.", "Order Processor consumes RabbitMQ with manual ACK and persists outcomes in PostgreSQL.", "Delivery is at-least-once; ProcessedMessage and attempt guards support duplicate handling."]
+    },
+    {
+      "dot": "amber",
+      "title": "Retries and failures",
+      "items": ["Failed messages go through a 5-second retry queue, up to three retries.", "Invalid messages or exhausted retries route to the DLQ.", "The application does not consume or replay the DLQ."]
+    },
+    {
+      "dot": "cyan",
+      "title": "Deployment and observability",
+      "items": ["Docker Compose runs frontend, API, processor, PostgreSQL, RabbitMQ, Loki, Alloy, and Grafana locally.", "Alloy reads only API and order-processor container logs, then pushes them to Loki for Grafana.", "Docker Hub images are referenced by Compose; image publication and remote deployment are not asserted."]
+    }
+  ]
+}
