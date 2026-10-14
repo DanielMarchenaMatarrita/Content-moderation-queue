@@ -16,6 +16,9 @@ function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             <span className="nav-section-label">{section.label}</span>
             {section.items.map((item) => {
               const Icon = item.icon;
+              if (item.external) {
+                return <a key={item.to} className="nav-link" href={item.to} target="_blank" rel="noreferrer" onClick={onNavigate}><Icon size={18} aria-hidden="true" />{item.label}</a>;
+              }
               return (
                 <NavLink
                   key={item.to}
@@ -62,7 +65,7 @@ export function AppShell() {
           </div>
         </div>
         <Navigation />
-        <p className="sidebar-note">Asynchronous payment operations</p>
+        <p className="sidebar-note">Asynchronous payment operations<br />Grafana links open separately.</p>
       </aside>
 
       <div className="workspace">
@@ -76,7 +79,7 @@ export function AppShell() {
               <span>Payment processing</span>
             </div>
           </div>
-          <span className="topbar-product">Order processing workspace</span>
+          <span className="topbar-product">Operations center</span>
         </header>
 
         <main ref={mainRef} id="main-content" className="main-content" tabIndex={-1}>
