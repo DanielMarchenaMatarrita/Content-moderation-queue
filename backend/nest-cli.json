@@ -46,6 +46,15 @@
         "tsConfigPath": "libs/messaging/tsconfig.lib.json"
       }
     },
+    "observability": {
+      "type": "library",
+      "root": "libs/observability",
+      "entryFile": "index",
+      "sourceRoot": "libs/observability/src",
+      "compilerOptions": {
+        "tsConfigPath": "libs/observability/tsconfig.lib.json"
+      }
+    },
     "moderation-worker": {
       "type": "application",
       "root": "apps/moderation-worker",

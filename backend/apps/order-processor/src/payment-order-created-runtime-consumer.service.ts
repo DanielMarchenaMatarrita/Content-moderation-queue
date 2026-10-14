@@ -1,10 +1,10 @@
 import {
   Injectable,
-  Logger,
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
 import { RABBITMQ_TOPOLOGY, RabbitMqConnectionService } from '@app/messaging';
+import { logApplicationEvent } from '@app/observability';
 import type { ChannelWrapper } from 'amqp-connection-manager';
 import type { Channel, ConsumeMessage } from 'amqplib';
 import { PAYMENT_ORDER_CREATED_CONSUMER_CONFIG } from './payment-order-created.constants.js';
@@ -15,9 +15,6 @@ import { PaymentOrderCreatedFailureRouterService } from './payment-order-created
 export class PaymentOrderCreatedRuntimeConsumerService
   implements OnApplicationBootstrap, OnModuleDestroy
 {
-  private readonly logger = new Logger(
-    PaymentOrderCreatedRuntimeConsumerService.name,
-  );
   private channel?: ChannelWrapper;
   private deliveryChannel?: Channel;
   private consumerTag?: string;
@@ -37,8 +34,10 @@ export class PaymentOrderCreatedRuntimeConsumerService
         const result = await channel.consume(
           PAYMENT_ORDER_CREATED_CONSUMER_CONFIG.queueName,
           (message) => {
-            void this.handleDelivery(message, channel).catch((error: unknown) =>
-              this.logger.error('Payment order delivery failed', error),
+            void this.handleDelivery(message, channel).catch(() =>
+              logApplicationEvent('order-processor', 'error', {
+                event: 'payment_order_delivery_failed',
+              }),
             );
           },
           { noAck: false },
@@ -63,15 +62,34 @@ export class PaymentOrderCreatedRuntimeConsumerService
     }
     if (result.status === 'invalid') {
       await this.failureRouter.publishDeadLetter(message, result.reason);
+      logApplicationEvent('order-processor', 'error', {
+        event: 'payment_order_dlq_published',
+        result: 'invalid',
+        retryCount,
+      });
       channel.ack(message);
       return;
     }
-    if (retryCount >= PAYMENT_ORDER_CREATED_CONSUMER_CONFIG.maxRetries)
+    if (retryCount >= PAYMENT_ORDER_CREATED_CONSUMER_CONFIG.maxRetries) {
       await this.failureRouter.publishDeadLetter(
         message,
         'Payment order processing exhausted retries',
       );
-    else await this.failureRouter.publishRetry(message, retryCount + 1);
+      logApplicationEvent('order-processor', 'error', {
+        event: 'payment_order_dlq_published',
+        orderId: result.event?.payload.orderId,
+        result: 'failed',
+        retryCount,
+      });
+    } else {
+      await this.failureRouter.publishRetry(message, retryCount + 1);
+      logApplicationEvent('order-processor', 'warn', {
+        event: 'payment_order_retry_published',
+        orderId: result.event?.payload.orderId,
+        result: 'retrying',
+        retryCount: retryCount + 1,
+      });
+    }
     channel.ack(message);
   }
 
