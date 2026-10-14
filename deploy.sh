@@ -4,7 +4,7 @@ set -eu
 SCRIPT_DIR=$(CDPATH= cd "$(dirname "$0")" && pwd)
 ENV_FILE="$SCRIPT_DIR/.env"
 ENV_EXAMPLE_FILE="$SCRIPT_DIR/.env.example"
-CREDENTIAL_INSTRUCTION='Set non-empty POSTGRES_PASSWORD and RABBITMQ_PASSWORD in .env, then rerun this script.'
+CREDENTIAL_INSTRUCTION='Set non-empty POSTGRES_PASSWORD, RABBITMQ_PASSWORD, and GRAFANA_ADMIN_PASSWORD in .env, then rerun this script.'
 
 if [ ! -f "$ENV_FILE" ]; then
   cp "$ENV_EXAMPLE_FILE" "$ENV_FILE"
@@ -39,7 +39,8 @@ invalid_credential() {
 
 postgres_password=$(get_env_value POSTGRES_PASSWORD)
 rabbitmq_password=$(get_env_value RABBITMQ_PASSWORD)
-if invalid_credential "$postgres_password" || invalid_credential "$rabbitmq_password"; then
+grafana_admin_password=$(get_env_value GRAFANA_ADMIN_PASSWORD)
+if invalid_credential "$postgres_password" || invalid_credential "$rabbitmq_password" || invalid_credential "$grafana_admin_password"; then
   echo "$CREDENTIAL_INSTRUCTION" >&2
   exit 1
 fi
